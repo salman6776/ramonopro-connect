@@ -135,7 +135,7 @@ function Hero() {
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] as const }}
           className="mx-auto max-w-4xl text-4xl font-bold leading-[1.05] tracking-tight text-primary sm:text-5xl md:text-7xl"
         >
           Le certificat de ramonage{" "}
@@ -619,7 +619,7 @@ function Pricing() {
           initial={{ opacity: 0, y: 40, scale: 0.97 }}
           whileInView={{ opacity: 1, y: 0, scale: 1 }}
           viewport={{ once: true, margin: "-80px" }}
-          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] as const }}
           className="mx-auto mt-12 max-w-md"
         >
           <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary to-primary/90 p-1 shadow-2xl shadow-primary/30">
@@ -761,7 +761,7 @@ function FAQ() {
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] as const }}
                     >
                       <div className="px-5 pb-5 text-sm leading-relaxed text-muted-foreground">
                         {item.a}
