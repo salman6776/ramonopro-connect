@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, useNavigate, Link, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import {
   SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -7,6 +8,8 @@ import {
 } from "@/components/ui/sidebar";
 import { LayoutDashboard, PlusCircle, FileText, Receipt, Users, Bell, Settings, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { fetchSubscription } from "@/lib/queries";
 import logo from "@/assets/logo.png";
 
 export const Route = createFileRoute("/_authenticated")({
