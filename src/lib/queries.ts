@@ -8,6 +8,7 @@ export type Intervention = {
   installation_type: string;
   conduit_state: string | null;
   cleaning_done: boolean | null;
+  vacuity_test: boolean | null;
   recommendations: string | null;
   notes: string | null;
   photos: string[] | null;
@@ -22,6 +23,14 @@ export type Client = {
   phone: string | null;
   address: string | null;
   email: string | null;
+  created_at: string;
+};
+
+export type Certificate = {
+  id: string;
+  user_id: string;
+  intervention_id: string | null;
+  pdf_url: string | null;
   created_at: string;
 };
 
@@ -46,6 +55,14 @@ export type Reminder = {
   sent_at: string | null;
   created_at: string;
   clients?: Client | null;
+};
+
+export type Subscription = {
+  id: string;
+  user_id: string;
+  plan: string | null;
+  status: string | null;
+  current_period_end: string | null;
 };
 
 export async function fetchClients(userId: string) {
@@ -85,4 +102,16 @@ export async function fetchReminders(userId: string) {
     .order("reminder_date", { ascending: true });
   if (error) throw error;
   return data as Reminder[];
+}
+
+export async function fetchSubscription(userId: string): Promise<Subscription | null> {
+  const { data } = await supabase
+    .from("subscriptions").select("*").eq("user_id", userId).maybeSingle();
+  return (data as Subscription) ?? null;
+}
+
+export async function fetchCertificateByIntervention(interventionId: string) {
+  const { data } = await supabase
+    .from("certificates").select("*").eq("intervention_id", interventionId).maybeSingle();
+  return (data as Certificate) ?? null;
 }
