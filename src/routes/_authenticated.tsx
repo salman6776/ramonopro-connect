@@ -32,6 +32,13 @@ function AuthedLayout() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
+  const { data: sub } = useQuery({
+    queryKey: ["subscription", user?.id],
+    queryFn: () => fetchSubscription(user!.id),
+    enabled: !!user,
+  });
+  const planLabel = ((sub?.plan ?? "starter") as string).replace(/^./, (c) => c.toUpperCase());
+
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
   }, [loading, user, navigate]);
@@ -47,7 +54,10 @@ function AuthedLayout() {
           <SidebarHeader className="border-b border-sidebar-border">
             <Link to="/dashboard" className="flex items-center gap-2 px-2 py-1.5">
               <img src={logo} alt="RamonoPro" className="h-8 w-8 shrink-0" width={32} height={32} />
-              <span className="font-bold text-sidebar-foreground group-data-[collapsible=icon]:hidden">RamonoPro</span>
+              <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
+                <span className="font-bold text-sidebar-foreground leading-tight">RamonoPro</span>
+                <Badge variant="secondary" className="mt-0.5 h-4 px-1.5 text-[10px] w-fit bg-[var(--color-brand)]/15 text-[var(--color-brand)] border-0">{planLabel}</Badge>
+              </div>
             </Link>
           </SidebarHeader>
           <SidebarContent>
