@@ -162,8 +162,9 @@ function List() {
                 <Button variant="outline" size="sm" asChild>
                   <Link to="/invoices"><Receipt className="h-4 w-4 mr-1" />Facture</Link>
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => resendToClient(i)}>
-                  Renvoyer
+                <Button variant="ghost" size="sm" onClick={() => resendToClient(i)} disabled={sendingId === i.id}>
+                  {sendingId === i.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
+                  Envoyer
                 </Button>
               </CardContent>
             </Card>
