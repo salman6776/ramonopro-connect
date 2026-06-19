@@ -8,9 +8,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileDown, FileText, Receipt } from "lucide-react";
+import { FileDown, FileText, Receipt, Mail, Loader2 } from "lucide-react";
 import { generateCertificatePDF } from "@/lib/pdf";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { sendCertificateEmail } from "@/lib/email.functions";
 
 export const Route = createFileRoute("/_authenticated/interventions/")({
   component: List,
