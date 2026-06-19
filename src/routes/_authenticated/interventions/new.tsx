@@ -13,8 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Camera, FileCheck, X, Loader2 } from "lucide-react";
+import { Camera, FileCheck, X, Loader2, Sparkles } from "lucide-react";
 import { generateCertificatePDF } from "@/lib/pdf";
+import { VoiceRecorder } from "@/components/voice-recorder";
+import { useServerFn } from "@tanstack/react-start";
+import { generateRecommendations } from "@/lib/ai.functions";
 
 export const Route = createFileRoute("/_authenticated/interventions/new")({
   component: NewIntervention,
@@ -49,6 +52,25 @@ function NewIntervention() {
     { file: null, preview: null },
   ]);
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const aiGen = useServerFn(generateRecommendations);
+
+  const runAI = async () => {
+    setAiBusy(true);
+    try {
+      const { text } = await aiGen({ data: {
+        notes, installationType, conduitState, cleaningDone, vacuityTest,
+      }});
+      if (text) {
+        setRecommendations(text);
+        toast.success("Recommandations générées ✓");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur IA");
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const handlePhoto = (idx: number, file: File | null) => {
     setPhotos((prev) => {
@@ -234,12 +256,21 @@ function NewIntervention() {
             <span>Nettoyage effectué</span>
           </label>
           <div>
-            <Label>Recommandations</Label>
-            <Textarea rows={3} value={recommendations} onChange={(e) => setRecommendations(e.target.value)} placeholder="Ex : remplacer la trappe de ramonage…" />
+            <div className="flex items-center justify-between mb-1">
+              <Label>Notes internes</Label>
+              <VoiceRecorder onTranscribed={(t) => setNotes((prev) => (prev ? prev + " " : "") + t)} />
+            </div>
+            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Dictez ou tapez vos observations…" />
           </div>
           <div>
-            <Label>Notes internes</Label>
-            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <div className="flex items-center justify-between mb-1">
+              <Label>Recommandations (client)</Label>
+              <Button type="button" variant="secondary" size="sm" onClick={runAI} disabled={aiBusy}>
+                {aiBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                Générer avec IA
+              </Button>
+            </div>
+            <Textarea rows={4} value={recommendations} onChange={(e) => setRecommendations(e.target.value)} placeholder="Texte qui apparaîtra sur le certificat remis au client." />
           </div>
         </CardContent>
       </Card>

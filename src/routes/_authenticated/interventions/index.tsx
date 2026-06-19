@@ -8,9 +8,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileDown, FileText, Receipt } from "lucide-react";
+import { FileDown, FileText, Receipt, Mail, Loader2 } from "lucide-react";
 import { generateCertificatePDF } from "@/lib/pdf";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { sendCertificateEmail } from "@/lib/email.functions";
 
 export const Route = createFileRoute("/_authenticated/interventions/")({
   component: List,
@@ -25,6 +27,8 @@ function List() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [period, setPeriod] = useState<string>("all");
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const sendEmail = useServerFn(sendCertificateEmail);
 
   const filtered = useMemo(() => {
     const now = new Date();
@@ -64,12 +68,40 @@ function List() {
     pdf.save(`certificat-${i.id.slice(0, 8)}.pdf`);
   };
 
-  const resendToClient = (i: typeof data[number]) => {
+  const resendToClient = async (i: typeof data[number]) => {
     if (!i.clients?.email) {
       toast.error("Aucun email enregistré pour ce client");
       return;
     }
-    toast.info("Envoi email — activez le connecteur Resend pour activer cette fonction.");
+    setSendingId(i.id);
+    try {
+      const pdf = await generateCertificatePDF({
+        intervention_date: i.intervention_date,
+        client_name: i.clients?.name ?? "Client",
+        client_address: i.clients?.address ?? "",
+        client_phone: i.clients?.phone ?? undefined,
+        installation_type: i.installation_type,
+        conduit_state: i.conduit_state ?? "—",
+        cleaning_done: !!i.cleaning_done,
+        recommendations: i.recommendations ?? "",
+        technician_name: user?.email ?? "",
+      });
+      const base64 = pdf.output("datauristring").split(",")[1];
+      await sendEmail({ data: {
+        to: i.clients.email,
+        clientName: i.clients.name,
+        technicianName: user?.email ?? "Votre ramoneur",
+        interventionDate: i.intervention_date,
+        installationType: i.installation_type,
+        pdfBase64: base64,
+        fileName: `certificat-ramonage-${new Date(i.intervention_date).toISOString().slice(0,10)}.pdf`,
+      }});
+      toast.success(`Certificat envoyé à ${i.clients.email}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur envoi email");
+    } finally {
+      setSendingId(null);
+    }
   };
 
   return (
@@ -130,8 +162,9 @@ function List() {
                 <Button variant="outline" size="sm" asChild>
                   <Link to="/invoices"><Receipt className="h-4 w-4 mr-1" />Facture</Link>
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => resendToClient(i)}>
-                  Renvoyer
+                <Button variant="ghost" size="sm" onClick={() => resendToClient(i)} disabled={sendingId === i.id}>
+                  {sendingId === i.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Mail className="h-4 w-4 mr-1" />}
+                  Envoyer
                 </Button>
               </CardContent>
             </Card>
