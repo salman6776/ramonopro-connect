@@ -97,3 +97,45 @@ Rédige uniquement les recommandations destinées au client.`;
     const json = (await res.json()) as { choices: { message: { content: string } }[] };
     return { text: (json.choices?.[0]?.message?.content ?? "").trim() };
   });
+
+/**
+ * Transforme des notes brutes (souvent dictées) en observations
+ * professionnelles courtes destinées au dossier interne.
+ */
+export const improveNotes = createServerFn({ method: "POST" })
+  .inputValidator((d: { notes: string }) => {
+    if (!d.notes || !d.notes.trim()) throw new Error("Notes vides");
+    return d;
+  })
+  .handler(async ({ data }) => {
+    const key = process.env.GROQ_API_KEY;
+    if (!key) throw new Error("GROQ_API_KEY manquante");
+
+    const system = `Tu es l'assistant d'un ramoneur professionnel français.
+Tu reçois des notes brutes (souvent dictées, télégraphiques, fautes de frappe) et tu les reformules en observations techniques claires et professionnelles.
+Règles strictes :
+- Français impeccable, vocabulaire métier (conduit, tubage, vacuité, créosote, tirage, fumisterie…)
+- 1 à 3 phrases au présent, factuelles
+- Conserve TOUTES les informations techniques (type d'appareil, état, anomalie, mesures)
+- Aucune phrase d'introduction. Donne directement le texte reformulé.`;
+
+    const res = await fetch(`${GROQ_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.2,
+        max_tokens: 300,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: `Notes brutes : ${data.notes}` },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`Groq Llama échoué (${res.status}): ${t.slice(0, 200)}`);
+    }
+    const json = (await res.json()) as { choices: { message: { content: string } }[] };
+    return { text: (json.choices?.[0]?.message?.content ?? "").trim() };
+  });
