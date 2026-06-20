@@ -287,15 +287,6 @@ function NewIntervention() {
             <span>Nettoyage effectué</span>
           </label>
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <Label>Notes internes</Label>
-              <VoiceRecorder onTranscribed={(t) => setNotes((prev) => (prev ? prev + " " : "") + t)} />
-            </div>
-            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Dictez ou tapez vos observations…" />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-1">
-          <div>
             <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
               <Label>Notes internes</Label>
               <div className="flex items-center gap-2">
@@ -322,30 +313,57 @@ function NewIntervention() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Photos</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
+            <span>Photos ({photos.length})</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" size="sm" variant="secondary">
+                  <ImagePlus className="h-4 w-4 mr-1" />Ajouter des photos
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => cameraInputRef.current?.click()}>
+                  <Camera className="h-4 w-4 mr-2" />Prendre une photo
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => galleryInputRef.current?.click()}>
+                  <Images className="h-4 w-4 mr-2" />Choisir dans la galerie
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+                  <FileCheck className="h-4 w-4 mr-2" />Importer un fichier
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </CardTitle>
+        </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-3">
-            {PHOTO_LABELS.map((label, i) => (
-              <label key={i} className="aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary text-xs text-muted-foreground relative overflow-hidden">
-                {photos[i].preview ? (
-                  <>
-                    <img src={photos[i].preview!} alt={label} className="absolute inset-0 w-full h-full object-cover" />
-                    <button type="button" onClick={(e) => { e.preventDefault(); handlePhoto(i, null); }}
-                      className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Camera className="h-6 w-6 mb-1" />
-                    <span className="text-center px-1">{label}</span>
-                  </>
-                )}
-                <input type="file" accept="image/*" capture="environment" className="hidden"
-                  onChange={(e) => handlePhoto(i, e.target.files?.[0] ?? null)} />
-              </label>
-            ))}
-          </div>
+          {/* Hidden inputs — only the user's explicit choice triggers them */}
+          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
+          <input ref={galleryInputRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
+          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden"
+            onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
+
+          {photos.length === 0 ? (
+            <button type="button" onClick={() => galleryInputRef.current?.click()}
+              className="w-full border-2 border-dashed rounded-lg py-8 text-sm text-muted-foreground hover:border-primary hover:text-primary transition flex flex-col items-center gap-2">
+              <ImagePlus className="h-6 w-6" />
+              Aucune photo. Cliquez sur « Ajouter des photos » pour en joindre.
+            </button>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+              {photos.map((p) => (
+                <div key={p.id} className="relative aspect-square rounded-lg overflow-hidden border">
+                  <img src={p.preview} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                  <button type="button" onClick={() => removePhoto(p.id)}
+                    className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-1">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
