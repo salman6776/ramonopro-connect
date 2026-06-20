@@ -142,11 +142,9 @@ function NewIntervention() {
 
       // 1. Upload photos to Storage
       const photoUrls: string[] = [];
-      for (const slot of photos) {
-        if (slot.file) {
-          const url = await uploadPhoto(uid, slot.file);
-          photoUrls.push(url);
-        }
+      for (const item of photos) {
+        const url = await uploadPhoto(uid, item.file);
+        photoUrls.push(url);
       }
 
       // 2. Insert intervention
@@ -294,6 +292,21 @@ function NewIntervention() {
               <VoiceRecorder onTranscribed={(t) => setNotes((prev) => (prev ? prev + " " : "") + t)} />
             </div>
             <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Dictez ou tapez vos observations…" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+              <Label>Notes internes</Label>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={runImprove} disabled={improveBusy || !notes.trim()}>
+                  {improveBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
+                  Améliorer
+                </Button>
+                <VoiceRecorder onTranscribed={(t) => setNotes((prev) => (prev ? prev + " " : "") + t)} />
+              </div>
+            </div>
+            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Tapez ou dictez vos observations. L'IA peut ensuite les reformuler proprement." />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
