@@ -50,14 +50,15 @@ function NewIntervention() {
   const [vacuityTest, setVacuityTest] = useState(true);
   const [recommendations, setRecommendations] = useState("");
   const [notes, setNotes] = useState("");
-  const [photos, setPhotos] = useState<PhotoSlot[]>([
-    { file: null, preview: null },
-    { file: null, preview: null },
-    { file: null, preview: null },
-  ]);
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [improveBusy, setImproveBusy] = useState(false);
   const aiGen = useServerFn(generateRecommendations);
+  const aiImprove = useServerFn(improveNotes);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const runAI = async () => {
     setAiBusy(true);
@@ -76,14 +77,42 @@ function NewIntervention() {
     }
   };
 
-  const handlePhoto = (idx: number, file: File | null) => {
+  const runImprove = async () => {
+    if (!notes.trim()) {
+      toast.error("Ajoutez d'abord quelques notes");
+      return;
+    }
+    setImproveBusy(true);
+    try {
+      const { text } = await aiImprove({ data: { notes } });
+      if (text) {
+        setNotes(text);
+        toast.success("Notes améliorées ✓");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur IA");
+    } finally {
+      setImproveBusy(false);
+    }
+  };
+
+  const addPhotos = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const items: PhotoItem[] = Array.from(files)
+      .filter((f) => f.type.startsWith("image/"))
+      .map((file) => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        preview: URL.createObjectURL(file),
+      }));
+    setPhotos((prev) => [...prev, ...items]);
+  };
+
+  const removePhoto = (id: string) => {
     setPhotos((prev) => {
-      const copy = [...prev];
-      if (copy[idx].preview) URL.revokeObjectURL(copy[idx].preview!);
-      copy[idx] = file
-        ? { file, preview: URL.createObjectURL(file) }
-        : { file: null, preview: null };
-      return copy;
+      const target = prev.find((p) => p.id === id);
+      if (target) URL.revokeObjectURL(target.preview);
+      return prev.filter((p) => p.id !== id);
     });
   };
 
