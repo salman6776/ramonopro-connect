@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,20 +12,24 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Camera, FileCheck, X, Loader2, Sparkles } from "lucide-react";
+import { Camera, FileCheck, X, Loader2, Sparkles, ImagePlus, Images, Wand2 } from "lucide-react";
 import { generateCertificatePDF } from "@/lib/pdf";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { useServerFn } from "@tanstack/react-start";
-import { generateRecommendations } from "@/lib/ai.functions";
+import { generateRecommendations, improveNotes } from "@/lib/ai.functions";
 
 export const Route = createFileRoute("/_authenticated/interventions/new")({
   component: NewIntervention,
 });
 
-const PHOTO_LABELS = ["Conduit avant", "Conduit après", "Installation"];
-
-type PhotoSlot = { file: File | null; preview: string | null };
+type PhotoItem = { id: string; file: File; preview: string };
 
 function NewIntervention() {
   const { user } = useAuth();
@@ -46,14 +50,15 @@ function NewIntervention() {
   const [vacuityTest, setVacuityTest] = useState(true);
   const [recommendations, setRecommendations] = useState("");
   const [notes, setNotes] = useState("");
-  const [photos, setPhotos] = useState<PhotoSlot[]>([
-    { file: null, preview: null },
-    { file: null, preview: null },
-    { file: null, preview: null },
-  ]);
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [improveBusy, setImproveBusy] = useState(false);
   const aiGen = useServerFn(generateRecommendations);
+  const aiImprove = useServerFn(improveNotes);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const runAI = async () => {
     setAiBusy(true);
@@ -72,14 +77,42 @@ function NewIntervention() {
     }
   };
 
-  const handlePhoto = (idx: number, file: File | null) => {
+  const runImprove = async () => {
+    if (!notes.trim()) {
+      toast.error("Ajoutez d'abord quelques notes");
+      return;
+    }
+    setImproveBusy(true);
+    try {
+      const { text } = await aiImprove({ data: { notes } });
+      if (text) {
+        setNotes(text);
+        toast.success("Notes améliorées ✓");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur IA");
+    } finally {
+      setImproveBusy(false);
+    }
+  };
+
+  const addPhotos = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const items: PhotoItem[] = Array.from(files)
+      .filter((f) => f.type.startsWith("image/"))
+      .map((file) => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        preview: URL.createObjectURL(file),
+      }));
+    setPhotos((prev) => [...prev, ...items]);
+  };
+
+  const removePhoto = (id: string) => {
     setPhotos((prev) => {
-      const copy = [...prev];
-      if (copy[idx].preview) URL.revokeObjectURL(copy[idx].preview!);
-      copy[idx] = file
-        ? { file, preview: URL.createObjectURL(file) }
-        : { file: null, preview: null };
-      return copy;
+      const target = prev.find((p) => p.id === id);
+      if (target) URL.revokeObjectURL(target.preview);
+      return prev.filter((p) => p.id !== id);
     });
   };
 
@@ -109,11 +142,9 @@ function NewIntervention() {
 
       // 1. Upload photos to Storage
       const photoUrls: string[] = [];
-      for (const slot of photos) {
-        if (slot.file) {
-          const url = await uploadPhoto(uid, slot.file);
-          photoUrls.push(url);
-        }
+      for (const item of photos) {
+        const url = await uploadPhoto(uid, item.file);
+        photoUrls.push(url);
       }
 
       // 2. Insert intervention
@@ -256,11 +287,17 @@ function NewIntervention() {
             <span>Nettoyage effectué</span>
           </label>
           <div>
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
               <Label>Notes internes</Label>
-              <VoiceRecorder onTranscribed={(t) => setNotes((prev) => (prev ? prev + " " : "") + t)} />
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={runImprove} disabled={improveBusy || !notes.trim()}>
+                  {improveBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
+                  Améliorer
+                </Button>
+                <VoiceRecorder onTranscribed={(t) => setNotes((prev) => (prev ? prev + " " : "") + t)} />
+              </div>
             </div>
-            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Dictez ou tapez vos observations…" />
+            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Tapez ou dictez vos observations. L'IA peut ensuite les reformuler proprement." />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -276,30 +313,57 @@ function NewIntervention() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Photos</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
+            <span>Photos ({photos.length})</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" size="sm" variant="secondary">
+                  <ImagePlus className="h-4 w-4 mr-1" />Ajouter des photos
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => cameraInputRef.current?.click()}>
+                  <Camera className="h-4 w-4 mr-2" />Prendre une photo
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => galleryInputRef.current?.click()}>
+                  <Images className="h-4 w-4 mr-2" />Choisir dans la galerie
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+                  <FileCheck className="h-4 w-4 mr-2" />Importer un fichier
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </CardTitle>
+        </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-3">
-            {PHOTO_LABELS.map((label, i) => (
-              <label key={i} className="aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary text-xs text-muted-foreground relative overflow-hidden">
-                {photos[i].preview ? (
-                  <>
-                    <img src={photos[i].preview!} alt={label} className="absolute inset-0 w-full h-full object-cover" />
-                    <button type="button" onClick={(e) => { e.preventDefault(); handlePhoto(i, null); }}
-                      className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Camera className="h-6 w-6 mb-1" />
-                    <span className="text-center px-1">{label}</span>
-                  </>
-                )}
-                <input type="file" accept="image/*" capture="environment" className="hidden"
-                  onChange={(e) => handlePhoto(i, e.target.files?.[0] ?? null)} />
-              </label>
-            ))}
-          </div>
+          {/* Hidden inputs — only the user's explicit choice triggers them */}
+          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
+          <input ref={galleryInputRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
+          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden"
+            onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
+
+          {photos.length === 0 ? (
+            <button type="button" onClick={() => galleryInputRef.current?.click()}
+              className="w-full border-2 border-dashed rounded-lg py-8 text-sm text-muted-foreground hover:border-primary hover:text-primary transition flex flex-col items-center gap-2">
+              <ImagePlus className="h-6 w-6" />
+              Aucune photo. Cliquez sur « Ajouter des photos » pour en joindre.
+            </button>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+              {photos.map((p) => (
+                <div key={p.id} className="relative aspect-square rounded-lg overflow-hidden border">
+                  <img src={p.preview} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                  <button type="button" onClick={() => removePhoto(p.id)}
+                    className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-1">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -43,8 +43,8 @@ function Dashboard() {
           <h1 className="text-2xl md:text-3xl font-bold text-primary">Tableau de bord</h1>
           <p className="text-sm text-muted-foreground">Aperçu de votre activité</p>
         </div>
-        <Button asChild className="bg-[var(--color-brand)] hover:bg-[var(--color-brand)]/90 text-[var(--color-brand-foreground)]">
-          <Link to="/interventions/new"><PlusCircle className="mr-2 h-4 w-4" />Nouvelle intervention</Link>
+        <Button asChild size="lg" className="bg-[var(--color-brand)] hover:bg-[var(--color-brand)]/90 text-[var(--color-brand-foreground)]">
+          <Link to="/interventions/new"><PlusCircle className="mr-2 h-5 w-5" />Nouveau certificat</Link>
         </Button>
       </div>
 
