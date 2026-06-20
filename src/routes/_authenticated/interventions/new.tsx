@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,20 +12,24 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Camera, FileCheck, X, Loader2, Sparkles } from "lucide-react";
+import { Camera, FileCheck, X, Loader2, Sparkles, ImagePlus, Images, Wand2 } from "lucide-react";
 import { generateCertificatePDF } from "@/lib/pdf";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { useServerFn } from "@tanstack/react-start";
-import { generateRecommendations } from "@/lib/ai.functions";
+import { generateRecommendations, improveNotes } from "@/lib/ai.functions";
 
 export const Route = createFileRoute("/_authenticated/interventions/new")({
   component: NewIntervention,
 });
 
-const PHOTO_LABELS = ["Conduit avant", "Conduit après", "Installation"];
-
-type PhotoSlot = { file: File | null; preview: string | null };
+type PhotoItem = { id: string; file: File; preview: string };
 
 function NewIntervention() {
   const { user } = useAuth();
