@@ -180,30 +180,31 @@ function NewIntervention() {
 
       const { url: pdfUrl } = await uploadCertificate(uid, intervention.id, pdf);
 
-      await supabase.from("certificates").insert({
-        user_id: uid,
+      const { error: certErr } = await supabase.from("certificates").insert({
         intervention_id: intervention.id,
         pdf_url: pdfUrl,
       });
+      if (certErr) console.warn("Certificate insert:", certErr.message);
 
       // 4. Auto invoice + reminder
-      await supabase.from("invoices").insert({
-        user_id: uid,
+      const { error: invErr } = await supabase.from("invoices").insert({
         intervention_id: intervention.id,
         amount: 80,
         status: "en attente",
         invoice_number: `F-${Date.now()}`,
       });
+      if (invErr) console.warn("Invoice insert:", invErr.message);
 
       const reminderDate = new Date(intervention.intervention_date);
       reminderDate.setMonth(reminderDate.getMonth() + 11);
-      await supabase.from("reminders").insert({
-        user_id: uid,
+      const { error: remErr } = await supabase.from("reminders").insert({
         intervention_id: intervention.id,
         client_id: finalClientId,
         reminder_date: reminderDate.toISOString(),
         status: "programmé",
       });
+      if (remErr) console.warn("Reminder insert:", remErr.message);
+
 
       pdf.save(`certificat-${(finalClient?.name ?? "client").replace(/\s+/g, "_")}-${new Date().toISOString().slice(0, 10)}.pdf`);
       toast.success("Certificat généré ✓");
