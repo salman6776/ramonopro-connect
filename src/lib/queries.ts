@@ -87,8 +87,8 @@ export async function fetchInterventions(userId: string, limit?: number) {
 export async function fetchInvoices(userId: string) {
   const { data, error } = await supabase
     .from("invoices")
-    .select("*, interventions(intervention_date, clients(*))")
-    .eq("user_id", userId)
+    .select("*, interventions!inner(user_id, intervention_date, clients(*))")
+    .eq("interventions.user_id", userId)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data as Invoice[];
@@ -97,12 +97,13 @@ export async function fetchInvoices(userId: string) {
 export async function fetchReminders(userId: string) {
   const { data, error } = await supabase
     .from("reminders")
-    .select("*, clients(*)")
-    .eq("user_id", userId)
+    .select("*, interventions!inner(user_id), clients(*)")
+    .eq("interventions.user_id", userId)
     .order("reminder_date", { ascending: true });
   if (error) throw error;
   return data as Reminder[];
 }
+
 
 export async function fetchSubscription(userId: string): Promise<Subscription | null> {
   const { data } = await supabase
