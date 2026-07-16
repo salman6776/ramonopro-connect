@@ -6,10 +6,10 @@ import {
   SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarTrigger, SidebarHeader, SidebarFooter,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, PlusCircle, FileText, Receipt, Users, Bell, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, PlusCircle, FileText, Receipt, Users, Bell, Settings, LogOut, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { fetchSubscription } from "@/lib/queries";
+import { fetchSubscription, fetchReminders } from "@/lib/queries";
 import logo from "@/assets/logo.png";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -21,6 +21,7 @@ const items = [
   { title: "Tableau de bord", url: "/dashboard", icon: LayoutDashboard },
   { title: "Nouvelle intervention", url: "/interventions/new", icon: PlusCircle },
   { title: "Historique", url: "/interventions", icon: FileText },
+  { title: "Documents", url: "/documents", icon: FolderOpen },
   { title: "Factures", url: "/invoices", icon: Receipt },
   { title: "Clients", url: "/clients", icon: Users },
   { title: "Rappels", url: "/reminders", icon: Bell },
@@ -32,19 +33,54 @@ function AuthedLayout() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  const { data: sub } = useQuery({
+  const { data: sub, isLoading: subLoading } = useQuery({
     queryKey: ["subscription", user?.id],
     queryFn: () => fetchSubscription(user!.id),
     enabled: !!user,
+    staleTime: 30_000,
   });
+
+  const { data: reminders = [] } = useQuery({
+    queryKey: ["reminders", user?.id],
+    queryFn: () => fetchReminders(user!.id),
+    enabled: !!user && sub?.status === "active",
+    staleTime: 60_000,
+  });
+
+  const now = new Date();
+  const overdueCount = reminders.filter(
+    (r) => new Date(r.scheduled_date) <= now && r.status !== "contacté" && r.status !== "envoyé"
+  ).length;
+
+  const isSubActive = sub?.status === "active";
   const planLabel = ((sub?.plan ?? "starter") as string).replace(/^./, (c) => c.toUpperCase());
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
   }, [loading, user, navigate]);
 
-  if (loading || !user) {
-    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Chargement…</div>;
+  useEffect(() => {
+    if (!loading && user && !subLoading && !isSubActive) {
+      if (sub === null) {
+        navigate({ to: "/demo" });
+      } else if (sub && sub.status === "pending_verification") {
+        navigate({ to: "/waiting" });
+      } else if (sub && sub.status !== "active") {
+        navigate({ to: "/demo" });
+      }
+    }
+  }, [loading, user, subLoading, isSubActive, sub, navigate]);
+
+  if (loading || !user || subLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+        Chargement…
+      </div>
+    );
+  }
+
+  if (!isSubActive) {
+    return null;
   }
 
   return (
@@ -66,12 +102,23 @@ function AuthedLayout() {
                 <SidebarMenu>
                   {items.map((item) => {
                     const active = pathname === item.url || (item.url !== "/dashboard" && pathname.startsWith(item.url));
+                    const isBell = item.icon === Bell;
                     return (
                       <SidebarMenuItem key={item.url}>
                         <SidebarMenuButton asChild isActive={active} tooltip={item.title}>
                           <Link to={item.url}>
-                            <item.icon />
+                            <div className="relative">
+                              <item.icon />
+                              {isBell && overdueCount > 0 && (
+                                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-[var(--color-brand)]" />
+                              )}
+                            </div>
                             <span>{item.title}</span>
+                            {isBell && overdueCount > 0 && (
+                              <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--color-brand)] text-[var(--color-brand-foreground)] group-data-[collapsible=icon]:hidden">
+                                {overdueCount}
+                              </span>
+                            )}
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
