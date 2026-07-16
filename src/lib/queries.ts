@@ -1,5 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export type Client = {
+  id: string;
+  user_id: string;
+  full_name: string;
+  phone: string | null;
+  address: string | null;
+  email: string | null;
+  created_at: string;
+};
+
 export type Intervention = {
   id: string;
   user_id: string;
@@ -9,51 +19,43 @@ export type Intervention = {
   conduit_state: string | null;
   cleaning_done: boolean | null;
   vacuity_test: boolean | null;
-  recommendations: string | null;
   notes: string | null;
-  photos: string[] | null;
+  photos_urls: string[] | null;
+  status: string | null;
   created_at: string;
   clients?: Client | null;
 };
 
-export type Client = {
-  id: string;
-  user_id: string;
-  name: string;
-  phone: string | null;
-  address: string | null;
-  email: string | null;
-  created_at: string;
-};
-
 export type Certificate = {
   id: string;
-  user_id: string;
   intervention_id: string | null;
   pdf_url: string | null;
-  created_at: string;
+  generated_at: string;
+  interventions?: {
+    intervention_date: string;
+    installation_type: string;
+    clients?: Client | null;
+  } | null;
 };
 
 export type Invoice = {
   id: string;
-  user_id: string;
   intervention_id: string | null;
   amount: number;
   status: string;
-  invoice_number: string | null;
-  created_at: string;
+  pdf_url: string | null;
+  issued_at: string;
+  due_date: string | null;
   interventions?: { intervention_date: string; clients?: Client | null } | null;
 };
 
 export type Reminder = {
   id: string;
-  user_id: string;
   intervention_id: string | null;
   client_id: string | null;
-  reminder_date: string;
+  scheduled_date: string;
   status: string;
   sent_at: string | null;
-  created_at: string;
   clients?: Client | null;
 };
 
@@ -63,13 +65,18 @@ export type Subscription = {
   plan: string | null;
   status: string | null;
   current_period_end: string | null;
+  proof_url: string | null;
+  reference_email: string | null;
 };
 
 export async function fetchClients(userId: string) {
   const { data, error } = await supabase
-    .from("clients").select("*").eq("user_id", userId).order("created_at", { ascending: false });
+    .from("clients")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
   if (error) throw error;
-  return data as Client[];
+  return (data ?? []) as Client[];
 }
 
 export async function fetchInterventions(userId: string, limit?: number) {
@@ -81,7 +88,7 @@ export async function fetchInterventions(userId: string, limit?: number) {
   if (limit) q = q.limit(limit);
   const { data, error } = await q;
   if (error) throw error;
-  return data as Intervention[];
+  return (data ?? []) as Intervention[];
 }
 
 export async function fetchInvoices(userId: string) {
@@ -89,9 +96,9 @@ export async function fetchInvoices(userId: string) {
     .from("invoices")
     .select("*, interventions!inner(user_id, intervention_date, clients(*))")
     .eq("interventions.user_id", userId)
-    .order("created_at", { ascending: false });
+    .order("issued_at", { ascending: false });
   if (error) throw error;
-  return data as Invoice[];
+  return (data ?? []) as Invoice[];
 }
 
 export async function fetchReminders(userId: string) {
@@ -99,20 +106,39 @@ export async function fetchReminders(userId: string) {
     .from("reminders")
     .select("*, interventions!inner(user_id), clients(*)")
     .eq("interventions.user_id", userId)
-    .order("reminder_date", { ascending: true });
+    .order("scheduled_date", { ascending: true });
   if (error) throw error;
-  return data as Reminder[];
+  return (data ?? []) as Reminder[];
 }
 
+export async function fetchCertificates(userId: string) {
+  const { data, error } = await supabase
+    .from("certificates")
+    .select("*, interventions!inner(user_id, intervention_date, installation_type, clients(*))")
+    .eq("interventions.user_id", userId)
+    .order("generated_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Certificate[];
+}
 
 export async function fetchSubscription(userId: string): Promise<Subscription | null> {
   const { data } = await supabase
-    .from("subscriptions").select("*").eq("user_id", userId).maybeSingle();
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
   return (data as Subscription) ?? null;
 }
 
 export async function fetchCertificateByIntervention(interventionId: string) {
   const { data } = await supabase
-    .from("certificates").select("*").eq("intervention_id", interventionId).maybeSingle();
+    .from("certificates")
+    .select("*")
+    .eq("intervention_id", interventionId)
+    .maybeSingle();
   return (data as Certificate) ?? null;
+}
+
+export function buildCertNumber(year: number, index: number) {
+  return `CERT-${year}-${String(index).padStart(4, "0")}`;
 }

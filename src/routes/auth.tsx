@@ -11,6 +11,10 @@ import logo from "@/assets/logo.png";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: (search.redirect as string) || undefined,
+    tab: (search.tab as string) || undefined,
+  }),
   head: () => ({ meta: [{ title: "Connexion — RamonoPro" }] }),
   component: AuthPage,
 });
@@ -18,13 +22,16 @@ export const Route = createFileRoute("/auth")({
 function AuthPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { redirect, tab } = Route.useSearch();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (!loading && user) return <Navigate to="/dashboard" />;
+  const dest = redirect === "checkout" ? "/checkout" : redirect === "demo" ? "/demo" : "/dashboard";
+
+  if (!loading && user) return <Navigate to={dest} />;
 
   const onLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,33 +40,66 @@ function AuthPage() {
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success("Connexion réussie");
-    navigate({ to: "/dashboard" });
+    navigate({ to: dest });
   };
 
   const onSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
-        data: { full_name: fullName, company_name: companyName },
-      },
-    });
-    if (error) { setBusy(false); return toast.error(error.message); }
-    // Try to insert profile (table profiles assumed to exist)
-    if (data.user) {
-      await supabase.from("profiles").upsert({
-        id: data.user.id,
-        full_name: fullName,
-        company_name: companyName,
+    try {
+      // Supabase Auth: crée le compte
+      const { data, error } = await supabase.auth.signUp({
         email,
-      }, { onConflict: "id" });
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}${dest}`,
+          data: { full_name: fullName, company_name: companyName },
+        },
+      });
+      if (error) {
+        setBusy(false);
+        return toast.error(error.message);
+      }
+
+      // Si session immédiate (email confirmation désactivée) → connecté directement
+      if (data.session) {
+        await supabase.from("profiles").upsert({
+          id: data.user!.id,
+          full_name: fullName,
+          company_name: companyName,
+          email,
+        }, { onConflict: "id" });
+        toast.success("Compte créé ! Bienvenue 🎉");
+        navigate({ to: dest });
+        return;
+      }
+
+      // Pas de session → confirmation email requise OU confirmation automatique manquante
+      // Essayer de se connecter directement (fonctionne si confirm email est OFF)
+      const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+        email, password,
+      });
+      if (!signInErr && signInData.session) {
+        await supabase.from("profiles").upsert({
+          id: signInData.user!.id,
+          full_name: fullName,
+          company_name: companyName,
+          email,
+        }, { onConflict: "id" });
+        toast.success("Compte créé ! Bienvenue 🎉");
+        navigate({ to: dest });
+        return;
+      }
+
+      // Dernier recours: confirmation email requise
+      if (data.user) {
+        toast.success("Compte créé ! Un email de confirmation a été envoyé. Cliquez sur le lien pour activer votre compte.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'inscription");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
-    toast.success("Compte créé ! Vérifiez vos emails si nécessaire.");
-    if (data.session) navigate({ to: "/dashboard" });
   };
 
   return (
@@ -69,8 +109,20 @@ function AuthPage() {
           <img src={logo} alt="RamonoPro" className="h-16 w-16" width={64} height={64} />
           <span className="text-xl font-bold text-primary">RamonoPro</span>
         </Link>
+
+        {redirect === "checkout" && (
+          <div className="mb-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700 text-center">
+            Créez votre compte pour finaliser votre abonnement Pro 🚀
+          </div>
+        )}
+        {redirect === "demo" && (
+          <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 text-center">
+            Créez votre compte pour générer votre certificat gratuit ✨
+          </div>
+        )}
+
         <div className="bg-card border rounded-xl shadow-sm p-6">
-          <Tabs defaultValue="login">
+          <Tabs defaultValue={tab === "login" ? "login" : "signup"}>
             <TabsList className="grid grid-cols-2 w-full mb-4">
               <TabsTrigger value="login">Connexion</TabsTrigger>
               <TabsTrigger value="signup">Inscription</TabsTrigger>

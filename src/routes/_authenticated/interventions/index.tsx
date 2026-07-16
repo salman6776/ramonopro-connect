@@ -33,7 +33,7 @@ function List() {
   const filtered = useMemo(() => {
     const now = new Date();
     return data.filter((i) => {
-      const txt = `${i.clients?.name ?? ""} ${i.installation_type} ${i.clients?.phone ?? ""}`;
+      const txt = `${i.clients?.full_name ?? ""} ${i.installation_type} ${i.clients?.phone ?? ""}`;
       if (!txt.toLowerCase().includes(search.toLowerCase())) return false;
       if (typeFilter !== "all" && i.installation_type !== typeFilter) return false;
       if (period !== "all") {
@@ -56,13 +56,13 @@ function List() {
     // Fallback: regenerate locally
     const pdf = await generateCertificatePDF({
       intervention_date: i.intervention_date,
-      client_name: i.clients?.name ?? "Client",
+      client_name: i.clients?.full_name ?? "Client",
       client_address: i.clients?.address ?? "",
       client_phone: i.clients?.phone ?? undefined,
       installation_type: i.installation_type,
       conduit_state: i.conduit_state ?? "—",
       cleaning_done: !!i.cleaning_done,
-      recommendations: i.recommendations ?? "",
+      recommendations: i.notes ?? "",
       technician_name: user?.email ?? "",
     });
     pdf.save(`certificat-${i.id.slice(0, 8)}.pdf`);
@@ -77,19 +77,19 @@ function List() {
     try {
       const pdf = await generateCertificatePDF({
         intervention_date: i.intervention_date,
-        client_name: i.clients?.name ?? "Client",
+        client_name: i.clients?.full_name ?? "Client",
         client_address: i.clients?.address ?? "",
         client_phone: i.clients?.phone ?? undefined,
         installation_type: i.installation_type,
         conduit_state: i.conduit_state ?? "—",
         cleaning_done: !!i.cleaning_done,
-        recommendations: i.recommendations ?? "",
+        recommendations: i.notes ?? "",
         technician_name: user?.email ?? "",
       });
       const base64 = pdf.output("datauristring").split(",")[1];
       await sendEmail({ data: {
         to: i.clients.email,
-        clientName: i.clients.name,
+        clientName: i.clients.full_name,
         technicianName: user?.email ?? "Votre ramoneur",
         interventionDate: i.intervention_date,
         installationType: i.installation_type,
@@ -148,7 +148,7 @@ function List() {
                   <FileText className="h-5 w-5" />
                 </div>
                 <div className="flex-1 min-w-[160px]">
-                  <div className="font-medium">{i.clients?.name ?? "Client supprimé"}</div>
+                  <div className="font-medium">{i.clients?.full_name ?? "Client supprimé"}</div>
                   <div className="text-xs text-muted-foreground">
                     {new Date(i.intervention_date).toLocaleDateString("fr-FR")} · {i.installation_type} · {i.conduit_state}
                   </div>

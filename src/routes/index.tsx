@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
@@ -53,6 +53,31 @@ const stagger: Variants = {
   show: { transition: { staggerChildren: 0.08 } },
 };
 
+function CtaButton({
+  children,
+  className,
+  size,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  size?: "lg" | "sm" | "default" | "icon";
+}) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const handleClick = () => {
+    if (user) {
+      navigate({ to: "/demo" });
+    } else {
+      navigate({ to: "/auth", search: { tab: "signup", redirect: "demo" } });
+    }
+  };
+  return (
+    <Button onClick={handleClick} size={size} className={className}>
+      {children}
+    </Button>
+  );
+}
+
 function Landing() {
   const { user, loading } = useAuth();
   if (!loading && user) return <Navigate to="/dashboard" />;
@@ -86,18 +111,15 @@ function Nav() {
         </Link>
         <div className="flex items-center gap-1 sm:gap-2">
           <Button asChild variant="ghost" size="sm" className="text-sm">
-            <Link to="/auth">Connexion</Link>
+            <Link to="/auth" search={{ redirect: "demo" }}>Connexion</Link>
           </Button>
-          <Button
-            asChild
+          <CtaButton
             size="sm"
             className="bg-[var(--color-brand)] hover:bg-[var(--color-brand)]/90 text-[var(--color-brand-foreground)] shadow-lg shadow-orange-500/20"
           >
-            <Link to="/auth">
-              Essayer
-              <ArrowRight className="ml-1 h-4 w-4" />
-            </Link>
-          </Button>
+            Essayer
+            <ArrowRight className="ml-1 h-4 w-4" />
+          </CtaButton>
         </div>
       </div>
     </motion.header>
@@ -168,16 +190,13 @@ function Hero() {
           transition={{ delay: 0.3, duration: 0.6 }}
           className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row"
         >
-          <Button
-            asChild
+          <CtaButton
             size="lg"
             className="group h-12 w-full bg-[var(--color-brand)] px-7 text-base font-semibold text-[var(--color-brand-foreground)] shadow-xl shadow-orange-500/30 hover:bg-[var(--color-brand)]/90 sm:w-auto"
           >
-            <Link to="/auth">
-              Commencer maintenant
-              <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-            </Link>
-          </Button>
+            Commencer maintenant
+            <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+          </CtaButton>
           <Button
             asChild
             variant="outline"
@@ -648,16 +667,13 @@ function Pricing() {
                 Soit moins de 1€ par jour
               </div>
 
-              <Button
-                asChild
+              <CtaButton
                 size="lg"
                 className="mt-6 h-12 w-full bg-[var(--color-brand)] text-base font-semibold text-[var(--color-brand-foreground)] shadow-xl shadow-orange-500/30 hover:bg-[var(--color-brand)]/90"
               >
-                <Link to="/auth">
-                  Essayer maintenant
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
+                Essayer maintenant
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </CtaButton>
 
               <div className="mt-6 space-y-2.5">
                 {items.map((it, i) => (
@@ -790,16 +806,13 @@ function FAQ() {
           <p className="relative mt-3 text-sm text-primary-foreground/70 md:text-base">
             Essayez RamonoPro aujourd'hui. Premier certificat en 30 secondes.
           </p>
-          <Button
-            asChild
+          <CtaButton
             size="lg"
             className="relative mt-6 h-12 bg-[var(--color-brand)] px-8 text-base font-semibold text-[var(--color-brand-foreground)] shadow-2xl shadow-orange-500/40 hover:bg-[var(--color-brand)]/90"
           >
-            <Link to="/auth">
-              Commencer maintenant
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
+            Commencer maintenant
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </CtaButton>
         </motion.div>
       </div>
     </section>
