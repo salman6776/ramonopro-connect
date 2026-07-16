@@ -18,9 +18,7 @@ export function SignaturePad({ onSigned, onClear, className = "" }: SignaturePad
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    const clientX = "clientX" in e ? e.clientX : e.clientX;
-    const clientY = "clientY" in e ? e.clientY : e.clientY;
-    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
   };
 
   const startDraw = useCallback((pos: { x: number; y: number }) => {
