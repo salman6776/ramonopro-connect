@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Camera, FileCheck, X, Loader2, Sparkles, ImagePlus, Images, Wand2, PenLine, ArrowRight } from "lucide-react";
+import { Camera, FileCheck, X, Loader2, Sparkles, ImagePlus, Images, Wand2, PenLine, ArrowRight, AlertCircle, RotateCw } from "lucide-react";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { useServerFn } from "@tanstack/react-start";
 import { generateRecommendations, improveNotes } from "@/lib/ai.functions";
@@ -39,6 +39,8 @@ function NewIntervention() {
   const [clientEmail, setClientEmail] = useState("");
   const [installationType, setInstallationType] = useState("gaz");
   const [conduitState, setConduitState] = useState("bon");
+  const [conduitCount, setConduitCount] = useState(1);
+  const [conduitMaterial, setConduitMaterial] = useState("maconne");
   const [cleaningDone, setCleaningDone] = useState(true);
   const [vacuityTest, setVacuityTest] = useState(true);
   const [recommendations, setRecommendations] = useState("");
@@ -47,11 +49,34 @@ function NewIntervention() {
   const [signature, setSignature] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [improveBusy, setImproveBusy] = useState(false);
+  const [improveError, setImproveError] = useState<string | null>(null);
 
   const aiGen = useServerFn(generateRecommendations);
   const aiImprove = useServerFn(improveNotes);
   const genPDF = useServerFn(generateOfficialPdf);
+
+  const runImprove = async () => {
+    if (!notes.trim()) { toast.error("Ajoutez d'abord des notes"); return; }
+    setImproveBusy(true); setImproveError(null);
+    try {
+      const { text } = await aiImprove({ data: { notes } });
+      if (text) { setNotes(text); toast.success("Notes améliorées ✓"); }
+    } catch (err) {
+      setImproveError(err instanceof Error ? err.message : "Erreur IA");
+    } finally { setImproveBusy(false); }
+  };
+
+  const runRecommendations = async () => {
+    setAiBusy(true); setAiError(null);
+    try {
+      const { text } = await aiGen({ data: { notes, installationType, conduitState, cleaningDone, vacuityTest } });
+      if (text) { setRecommendations(text); toast.success("Recommandations générées ✓"); }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Erreur IA");
+    } finally { setAiBusy(false); }
+  };
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -112,6 +137,8 @@ function NewIntervention() {
           client_email: clientEmail || undefined,
           installation_type: installationType,
           conduit_state: conduitState,
+          conduit_count: conduitCount,
+          conduit_material: conduitMaterial,
           cleaning_done: cleaningDone,
           vacuity_test: vacuityTest,
           recommendations: recommendations || undefined,
@@ -252,6 +279,25 @@ function NewIntervention() {
               </Select>
             </div>
           </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <Label>Nombre de conduits ramonés</Label>
+              <Input type="number" min={1} max={20} value={conduitCount}
+                onChange={(e) => setConduitCount(Math.max(1, parseInt(e.target.value || "1", 10)))} />
+            </div>
+            <div>
+              <Label>Matériau du conduit</Label>
+              <Select value={conduitMaterial} onValueChange={setConduitMaterial}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="maconne">Maçonné (briques / boisseaux)</SelectItem>
+                  <SelectItem value="metallique">Métallique</SelectItem>
+                  <SelectItem value="tubage_inox">Tubage inox</SelectItem>
+                  <SelectItem value="autre">Autre</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <Checkbox checked={cleaningDone} onCheckedChange={(v) => setCleaningDone(!!v)} />
             <span>Nettoyage du conduit effectué</span>
@@ -264,15 +310,8 @@ function NewIntervention() {
             <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
               <Label>Notes internes</Label>
               <div className="flex items-center gap-2">
-                <Button type="button" variant="secondary" size="sm" onClick={async () => {
-                  if (!notes.trim()) { toast.error("Ajoutez d'abord des notes"); return; }
-                  setImproveBusy(true);
-                  try {
-                    const { text } = await aiImprove({ data: { notes } });
-                    if (text) { setNotes(text); toast.success("Notes améliorées ✓"); }
-                  } catch { toast.error("Erreur IA"); }
-                  finally { setImproveBusy(false); }
-                }} disabled={improveBusy || !notes.trim()}>
+                <Button type="button" variant="secondary" size="sm" onClick={runImprove}
+                  disabled={improveBusy || !notes.trim()}>
                   {improveBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
                   Améliorer
                 </Button>
@@ -281,24 +320,37 @@ function NewIntervention() {
             </div>
             <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}
               placeholder="Tapez ou dictez vos observations." />
+            {improveError && (
+              <div className="mt-2 flex items-start gap-2 text-xs text-destructive">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span className="flex-1">{improveError}</span>
+                <button type="button" onClick={runImprove}
+                  className="inline-flex items-center gap-1 underline hover:no-underline">
+                  <RotateCw className="h-3 w-3" />Réessayer
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
               <Label>Recommandations (visibles sur le certificat)</Label>
-              <Button type="button" variant="secondary" size="sm" onClick={async () => {
-                setAiBusy(true);
-                try {
-                  const { text } = await aiGen({ data: { notes, installationType, conduitState, cleaningDone, vacuityTest } });
-                  if (text) { setRecommendations(text); toast.success("Recommandations générées ✓"); }
-                } catch { toast.error("Erreur IA"); }
-                finally { setAiBusy(false); }
-              }} disabled={aiBusy}>
+              <Button type="button" variant="secondary" size="sm" onClick={runRecommendations} disabled={aiBusy}>
                 {aiBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
                 Générer avec IA
               </Button>
             </div>
             <Textarea rows={4} value={recommendations} onChange={(e) => setRecommendations(e.target.value)}
               placeholder="Texte qui apparaîtra sur le certificat remis au client." />
+            {aiError && (
+              <div className="mt-2 flex items-start gap-2 text-xs text-destructive">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span className="flex-1">{aiError}</span>
+                <button type="button" onClick={runRecommendations}
+                  className="inline-flex items-center gap-1 underline hover:no-underline">
+                  <RotateCw className="h-3 w-3" />Réessayer
+                </button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

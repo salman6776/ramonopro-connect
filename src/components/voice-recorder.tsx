@@ -1,23 +1,54 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, Square, Loader2, Sparkles } from "lucide-react";
+import { Mic, Square, Loader2, Sparkles, AlertCircle, RotateCw } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { transcribeAudio } from "@/lib/ai.functions";
-import { toast } from "sonner";
 
-type Props = {
-  onTranscribed: (text: string) => void;
-};
+type Props = { onTranscribed: (text: string) => void };
 
-/** Bouton d'enregistrement → transcription Groq Whisper FR. */
+const MAX_RECORD_MS = 120_000; // 2 min
+
+function isMediaRecorderSupported() {
+  return typeof window !== "undefined" && typeof window.MediaRecorder !== "undefined";
+}
+
 export function VoiceRecorder({ onTranscribed }: Props) {
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [supported, setSupported] = useState(true);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const lastBlobRef = useRef<{ blob: Blob; mimeType: string } | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcribe = useServerFn(transcribeAudio);
 
+  useEffect(() => {
+    setSupported(isMediaRecorderSupported());
+    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
+  }, []);
+
+  const runTranscription = async (blob: Blob, mimeType: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const base64 = await blobToBase64(blob);
+      const { text } = await transcribe({ data: { audioBase64: base64, mimeType } });
+      if (text) onTranscribed(text);
+      else setError("Aucun texte détecté.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur transcription");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const start = async () => {
+    setError(null);
+    if (!supported) {
+      setError("Dictée non supportée sur ce navigateur.");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const rec = new MediaRecorder(stream, { mimeType: pickMime() });
@@ -25,32 +56,31 @@ export function VoiceRecorder({ onTranscribed }: Props) {
       rec.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
         const blob = new Blob(chunksRef.current, { type: rec.mimeType });
         if (blob.size < 1000) {
-          toast.error("Enregistrement trop court");
+          setError("Enregistrement trop court.");
           return;
         }
-        setBusy(true);
-        try {
-          const base64 = await blobToBase64(blob);
-          const { text } = await transcribe({ data: { audioBase64: base64, mimeType: rec.mimeType } });
-          if (text) {
-            onTranscribed(text);
-            toast.success("Note vocale transcrite ✓");
-          } else {
-            toast.error("Aucun texte détecté");
-          }
-        } catch (err) {
-          toast.error(err instanceof Error ? err.message : "Erreur transcription");
-        } finally {
-          setBusy(false);
-        }
+        lastBlobRef.current = { blob, mimeType: rec.mimeType };
+        await runTranscription(blob, rec.mimeType);
       };
       rec.start();
       recRef.current = rec;
       setRecording(true);
-    } catch {
-      toast.error("Microphone inaccessible");
+      timeoutRef.current = setTimeout(() => {
+        if (recRef.current?.state === "recording") recRef.current.stop();
+        setRecording(false);
+      }, MAX_RECORD_MS);
+    } catch (err) {
+      const name = (err as { name?: string })?.name;
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setError("Accès au micro refusé. Autorisez-le dans les réglages du navigateur.");
+      } else if (name === "NotFoundError") {
+        setError("Aucun micro détecté.");
+      } else {
+        setError("Micro inaccessible.");
+      }
     }
   };
 
@@ -59,21 +89,40 @@ export function VoiceRecorder({ onTranscribed }: Props) {
     setRecording(false);
   };
 
-  if (busy) {
-    return (
-      <Button type="button" variant="secondary" size="sm" disabled>
-        <Loader2 className="h-4 w-4 mr-1 animate-spin" />Transcription IA…
-      </Button>
-    );
-  }
-  return recording ? (
-    <Button type="button" variant="destructive" size="sm" onClick={stop} className="animate-pulse">
-      <Square className="h-4 w-4 mr-1" />Arrêter
-    </Button>
-  ) : (
-    <Button type="button" variant="secondary" size="sm" onClick={start}>
-      <Mic className="h-4 w-4 mr-1" />Dicter
-    </Button>
+  const retry = () => {
+    if (lastBlobRef.current) {
+      void runTranscription(lastBlobRef.current.blob, lastBlobRef.current.mimeType);
+    } else {
+      void start();
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      {busy ? (
+        <Button type="button" variant="secondary" size="sm" disabled>
+          <Loader2 className="h-4 w-4 mr-1 animate-spin" />Transcription IA…
+        </Button>
+      ) : recording ? (
+        <Button type="button" variant="destructive" size="sm" onClick={stop} className="animate-pulse">
+          <Square className="h-4 w-4 mr-1" />Arrêter
+        </Button>
+      ) : (
+        <Button type="button" variant="secondary" size="sm" onClick={start} disabled={!supported}>
+          <Mic className="h-4 w-4 mr-1" />Dicter
+        </Button>
+      )}
+      {error && (
+        <div className="flex items-center gap-2 text-xs text-destructive max-w-[260px] text-right">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button type="button" onClick={retry}
+            className="inline-flex items-center gap-1 underline hover:no-underline">
+            <RotateCw className="h-3 w-3" />Réessayer
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
