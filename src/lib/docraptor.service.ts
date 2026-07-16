@@ -14,6 +14,8 @@ export interface FormData {
   client_email?: string;
   installation_type: string;
   conduit_state: string;
+  conduit_count?: number;
+  conduit_material?: string;
   cleaning_done: boolean;
   vacuity_test: boolean;
   recommendations?: string;
