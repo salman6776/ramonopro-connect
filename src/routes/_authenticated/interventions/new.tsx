@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Camera, FileCheck, X, Loader2, Sparkles, ImagePlus, Images, Wand2, PenLine, ArrowRight } from "lucide-react";
+import { Camera, FileCheck, X, Loader2, Sparkles, ImagePlus, Images, Wand2, PenLine, ArrowRight, AlertCircle, RotateCw } from "lucide-react";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { useServerFn } from "@tanstack/react-start";
 import { generateRecommendations, improveNotes } from "@/lib/ai.functions";
@@ -39,6 +39,8 @@ function NewIntervention() {
   const [clientEmail, setClientEmail] = useState("");
   const [installationType, setInstallationType] = useState("gaz");
   const [conduitState, setConduitState] = useState("bon");
+  const [conduitCount, setConduitCount] = useState(1);
+  const [conduitMaterial, setConduitMaterial] = useState("maconne");
   const [cleaningDone, setCleaningDone] = useState(true);
   const [vacuityTest, setVacuityTest] = useState(true);
   const [recommendations, setRecommendations] = useState("");
@@ -47,11 +49,34 @@ function NewIntervention() {
   const [signature, setSignature] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [improveBusy, setImproveBusy] = useState(false);
+  const [improveError, setImproveError] = useState<string | null>(null);
 
   const aiGen = useServerFn(generateRecommendations);
   const aiImprove = useServerFn(improveNotes);
   const genPDF = useServerFn(generateOfficialPdf);
+
+  const runImprove = async () => {
+    if (!notes.trim()) { toast.error("Ajoutez d'abord des notes"); return; }
+    setImproveBusy(true); setImproveError(null);
+    try {
+      const { text } = await aiImprove({ data: { notes } });
+      if (text) { setNotes(text); toast.success("Notes améliorées ✓"); }
+    } catch (err) {
+      setImproveError(err instanceof Error ? err.message : "Erreur IA");
+    } finally { setImproveBusy(false); }
+  };
+
+  const runRecommendations = async () => {
+    setAiBusy(true); setAiError(null);
+    try {
+      const { text } = await aiGen({ data: { notes, installationType, conduitState, cleaningDone, vacuityTest } });
+      if (text) { setRecommendations(text); toast.success("Recommandations générées ✓"); }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Erreur IA");
+    } finally { setAiBusy(false); }
+  };
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
