@@ -82,96 +82,101 @@ function buildHtml(params: {
 }) {
   const { data: d, certNumber, isTest, profile, photoBlocks } = params;
 
-  const now     = new Date();
-  const dateFr  = now.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
-  const nextYearFr = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate())
-    .toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
+  const now = new Date();
+  const dateFr = now.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
 
   const installationLabels: Record<string, string> = {
-    gaz:      "Appareil à gaz",
-    fioul:    "Chaudière fioul",
-    bois:     "Insert / Poêle à bois",
+    gaz: "Chaudière / appareil à gaz",
+    fioul: "Chaudière fioul",
+    bois: "Insert / poêle à bois",
     granulés: "Poêle à granulés",
   };
   const conduitLabels: Record<string, string> = {
-    bon:              "Conforme — aucune anomalie",
-    anomalie_mineure: "Anomalie mineure détectée",
-    anomalie_majeure: "ANOMALIE MAJEURE — Intervention urgente requise",
+    bon: "Conforme — aucune anomalie constatée",
+    anomalie_mineure: "Anomalie mineure — surveillance recommandée",
+    anomalie_majeure: "ANOMALIE MAJEURE — intervention urgente requise",
+  };
+  const materialLabels: Record<string, string> = {
+    maconne: "Maçonné (briques / boisseaux)",
+    metallique: "Métallique",
+    tubage_inox: "Tubage inox",
+    autre: "Autre",
   };
 
-  const C  = "#1a3557";
-  const companyName    = (profile.company_name as string) || "Entreprise de Ramonage";
-  const companyAddress = (profile.address      as string) || "";
-  const companyPhone   = (profile.phone        as string) || "";
-  const companyEmail   = (profile.email        as string) || "";
-  const companySiret   = (profile.siret        as string) || "";
-  const techName       = (profile.full_name    as string) || "";
+  // Fréquence légale selon combustible
+  const isSolidFuel = d.installation_type === "bois" || d.installation_type === "granulés";
+  const periodicity = isSolidFuel
+    ? "2 ramonages par an, dont 1 pendant la période de chauffe (bois / granulés)"
+    : "1 ramonage par an (gaz / fioul)";
+  const nextInterval = isSolidFuel ? 6 : 12;
+  const nextDate = new Date(now);
+  nextDate.setMonth(nextDate.getMonth() + nextInterval);
+  const nextDateFr = nextDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
 
-  const conduitOk     = d.conduit_state === "bon";
+  const C = "#1a3557";
+  const companyName = (profile.company_name as string) || "Entreprise de Ramonage";
+  const companyAddress = (profile.address as string) || "";
+  const companyPhone = (profile.phone as string) || "";
+  const companyEmail = (profile.email as string) || "";
+  const companySiret = (profile.siret as string) || "";
+  const companyInsurance = (profile.insurance as string) || "";
+  const techName = (profile.full_name as string) || "";
+
+  const conduitOk = d.conduit_state === "bon";
   const conduitMajeur = d.conduit_state === "anomalie_majeure";
+  const conduitCount = d.conduit_count && d.conduit_count > 0 ? d.conduit_count : 1;
+  const conduitMat = materialLabels[d.conduit_material || "maconne"] || "Maçonné";
 
-  const chkOk = (label: string, badge: string) =>
-    `<tr>
-      <td style="width:22px;padding:3px 5px 3px 0;vertical-align:middle;">
-        <span style="font-size:13pt;font-weight:900;color:#16a34a;">&#10003;</span>
+  const chk = (ok: boolean, label: string, okBadge = "RÉALISÉ", koBadge = "NON RÉALISÉ") => `
+    <tr>
+      <td style="width:20px;padding:4px 6px 4px 0;vertical-align:middle;">
+        <span style="font-size:13pt;font-weight:900;color:${ok ? "#16a34a" : "#dc2626"};">${ok ? "&#10003;" : "&#10007;"}</span>
       </td>
-      <td style="padding:3px 8px 3px 0;font-size:9.5pt;color:#111;vertical-align:middle;">${label}</td>
-      <td style="text-align:right;vertical-align:middle;padding:3px 0;">
-        <span style="background:#f0fdf4;border:1px solid #86efac;border-radius:3px;padding:2px 8px;font-size:8pt;font-weight:700;color:#15803d;">${badge}</span>
-      </td>
-    </tr>`;
-
-  const chkKo = (label: string, badge: string) =>
-    `<tr>
-      <td style="width:22px;padding:3px 5px 3px 0;vertical-align:middle;">
-        <span style="font-size:13pt;font-weight:900;color:#dc2626;">&#10007;</span>
-      </td>
-      <td style="padding:3px 8px 3px 0;font-size:9.5pt;color:#111;vertical-align:middle;">${label}</td>
-      <td style="text-align:right;vertical-align:middle;padding:3px 0;">
-        <span style="background:#fef2f2;border:1px solid #fca5a5;border-radius:3px;padding:2px 8px;font-size:8pt;font-weight:700;color:#b91c1c;">${badge}</span>
+      <td style="padding:4px 8px 4px 0;font-size:9.5pt;color:#111;vertical-align:middle;">${label}</td>
+      <td style="text-align:right;vertical-align:middle;padding:4px 0;">
+        <span style="background:${ok ? "#f0fdf4" : "#fef2f2"};border:1px solid ${ok ? "#86efac" : "#fca5a5"};
+          border-radius:3px;padding:2px 8px;font-size:8pt;font-weight:700;color:${ok ? "#15803d" : "#b91c1c"};">
+          ${ok ? okBadge : koBadge}
+        </span>
       </td>
     </tr>`;
 
-  const chkRow = (ok: boolean, label: string, badgeOk: string, badgeKo: string) =>
-    ok ? chkOk(label, badgeOk) : chkKo(label, badgeKo);
-
-  const sHead = (txt: string) =>
-    `<table style="width:100%;border-collapse:collapse;margin-bottom:0;">
+  const sectionHead = (num: string, txt: string) => `
+    <table style="width:100%;border-collapse:collapse;margin-top:8px;">
       <tr>
-        <td style="background:${C};color:#fff;font-size:8.5pt;font-weight:700;
-          padding:5px 11px;letter-spacing:.5px;text-transform:uppercase;">
-          ${txt}
+        <td style="background:${C};color:#fff;font-size:9pt;font-weight:700;
+          padding:6px 12px;letter-spacing:.4px;text-transform:uppercase;">
+          <span style="opacity:.7;margin-right:8px;">${num}</span>${txt}
         </td>
       </tr>
     </table>`;
 
   const lbl = (t: string) =>
-    `<span style="font-size:7pt;color:#777;text-transform:uppercase;letter-spacing:.3px;font-weight:700;">${t}</span>`;
-
+    `<div style="font-size:7pt;color:#777;text-transform:uppercase;letter-spacing:.3px;font-weight:700;">${t}</div>`;
   const val = (t: string, extra = "") =>
     `<div style="font-size:10pt;font-weight:600;color:#111;margin-top:1px;${extra}">${t}</div>`;
 
   const testBanner = isTest
-    ? `<table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
+    ? `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
         <tr>
           <td style="background:#fef3c7;border:2px solid #f59e0b;border-radius:5px;
-            padding:9px 16px;text-align:center;font-size:10.5pt;font-weight:800;
-            color:#92400e;letter-spacing:.8px;">
-            &#9888;&nbsp;&nbsp;DOCUMENT DE PR&#201;VISUALISATION &mdash; NON CONTRACTUEL
+            padding:8px 14px;text-align:center;font-size:10pt;font-weight:800;
+            color:#92400e;letter-spacing:.6px;">
+            &#9888;&nbsp;DOCUMENT DE PRÉVISUALISATION — NON CONTRACTUEL
           </td>
         </tr>
       </table>`
     : "";
 
   const conduitAlert = !conduitOk
-    ? `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+    ? `<table style="width:100%;border-collapse:collapse;margin:8px 0;">
         <tr>
           <td style="padding:9px 14px;font-size:9pt;font-weight:700;
             ${conduitMajeur
               ? "background:#fef2f2;border:1.5px solid #ef4444;color:#991b1b;"
               : "background:#fffbeb;border:1.5px solid #f59e0b;color:#92400e;"}
             border-radius:4px;">
-            &#9888;&nbsp;&nbsp;${conduitLabels[d.conduit_state] ?? d.conduit_state}
+            &#9888;&nbsp;${conduitLabels[d.conduit_state] ?? d.conduit_state}
           </td>
         </tr>
       </table>`
@@ -182,42 +187,29 @@ function buildHtml(params: {
     : `<div style="height:48px;"></div>`;
 
   const notesBlock = d.notes
-    ? `<tr>
-        <td colspan="3" style="padding:8px 0 0 0;">
-          <div style="border-top:1px solid #dde6f0;margin-bottom:7px;"></div>
-          ${lbl("Observations techniques")}
-          <div style="background:#f8fafc;border:1px solid #dde6f0;border-radius:3px;
-            padding:7px 10px;font-size:9pt;color:#374151;line-height:1.55;margin-top:3px;">
-            ${d.notes}
-          </div>
-        </td>
-      </tr>`
+    ? `<tr><td colspan="3" style="padding:8px 12px 10px;border-top:1px solid #e2e8f0;">
+        ${lbl("Observations techniques")}
+        <div style="background:#f8fafc;border:1px solid #dde6f0;border-radius:3px;
+          padding:7px 10px;font-size:9pt;color:#374151;line-height:1.55;margin-top:3px;">${d.notes}</div>
+      </td></tr>`
     : "";
 
   const recoBlock = d.recommendations
-    ? `<tr>
-        <td colspan="3" style="padding:8px 0 0 0;">
-          <div style="border-top:1px solid #dde6f0;margin-bottom:7px;"></div>
-          ${lbl("Recommandations")}
-          <div style="background:#fffbeb;border:1px solid #fcd34d;border-left:3px solid #f59e0b;
-            border-radius:3px;padding:7px 10px;font-size:9pt;color:#374151;line-height:1.55;margin-top:3px;">
-            ${d.recommendations}
-          </div>
-        </td>
-      </tr>`
+    ? `<tr><td colspan="3" style="padding:8px 12px 10px;border-top:1px solid #e2e8f0;">
+        ${lbl("Recommandations au client")}
+        <div style="background:#fffbeb;border:1px solid #fcd34d;border-left:3px solid #f59e0b;
+          border-radius:3px;padding:7px 10px;font-size:9pt;color:#374151;line-height:1.55;margin-top:3px;">
+          ${d.recommendations}
+        </div>
+      </td></tr>`
     : "";
 
   const photosSection = photoBlocks
-    ? `${sHead("Photos de l'intervention")}
-      <table style="width:100%;border-collapse:collapse;border:1px solid #ccd8e6;
-        border-top:none;margin-bottom:10px;">
-        <tr>
-          <td style="padding:10px;">
-            <table style="width:100%;border-collapse:collapse;">
-              <tr>${photoBlocks}</tr>
-            </table>
-          </td>
-        </tr>
+    ? `${sectionHead("6", "Photos de l'intervention")}
+      <table style="width:100%;border-collapse:collapse;border:1px solid #ccd8e6;border-top:none;">
+        <tr><td style="padding:10px;">
+          <table style="width:100%;border-collapse:collapse;"><tr>${photoBlocks}</tr></table>
+        </td></tr>
       </table>`
     : "";
 
@@ -227,145 +219,119 @@ function buildHtml(params: {
 <meta charset="UTF-8">
 <title>Certificat de Ramonage ${certNumber}</title>
 <style>
-  @page { size: A4; margin: 12mm 13mm 14mm 13mm; }
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 9.5pt;
-    color: #111;
-    background: #fff;
-    margin: 0;
-    padding: 0;
-  }
+  @page { size: A4; margin: 10mm 12mm 12mm 12mm; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 9.5pt; color: #111; background: #fff; margin: 0; padding: 0; }
   table { border-collapse: collapse; }
   td, th { vertical-align: top; padding: 0; }
-  .photo-img {
-    width: 100%;
-    height: 110px;
-    object-fit: cover;
-    border: 1px solid #dde6f0;
-    border-radius: 3px;
-    display: block;
-  }
+  .photo-img { width: 100%; height: 100px; object-fit: cover; border: 1px solid #dde6f0; border-radius: 3px; display: block; }
+  .box { border: 1px solid #ccd8e6; border-top: none; }
 </style>
 </head>
 <body>
 
-<!-- WATERMARK -->
 ${isTest ? `<div style="position:fixed;top:46%;left:50%;
   transform:translate(-50%,-50%) rotate(-38deg);
-  font-size:68pt;font-weight:900;
-  color:rgba(180,30,30,0.055);
+  font-size:68pt;font-weight:900;color:rgba(180,30,30,0.055);
   white-space:nowrap;letter-spacing:8px;
   font-family:Arial,sans-serif;z-index:0;">ESSAI GRATUIT</div>` : ""}
 
-<!-- PAGE WRAPPER -->
 <table style="width:100%;border:2.5px solid ${C};border-collapse:collapse;">
 <tr><td style="padding:12px 14px 14px;">
 
 ${testBanner}
 
-<!-- ══ EN-TÊTE ══ -->
-<table style="width:100%;margin-bottom:0;">
+<!-- EN-TÊTE -->
+<table style="width:100%;">
   <tr>
     <td style="width:62%;vertical-align:top;padding-right:16px;">
-      <div style="font-size:18pt;font-weight:900;color:${C};line-height:1.1;letter-spacing:-.3px;">
-        ${companyName}
-      </div>
-      <div style="font-size:8pt;color:#555;line-height:1.8;margin-top:5px;">
+      <div style="font-size:17pt;font-weight:900;color:${C};line-height:1.1;letter-spacing:-.3px;">${companyName}</div>
+      <div style="font-size:8pt;color:#555;line-height:1.7;margin-top:5px;">
         ${companyAddress ? `${companyAddress}<br/>` : ""}
-        ${companyPhone   ? `T&#233;l&nbsp;: ${companyPhone}${companyEmail ? "&nbsp;&nbsp;&nbsp;" : "<br/>"}` : ""}
-        ${companyEmail   ? `${companyEmail}<br/>` : ""}
-        ${companySiret   ? `SIRET&nbsp;: <strong>${companySiret}</strong>` : ""}
+        ${companyPhone ? `Tél&nbsp;: ${companyPhone}${companyEmail ? "&nbsp;&nbsp;&middot;&nbsp;&nbsp;" : "<br/>"}` : ""}
+        ${companyEmail ? `${companyEmail}<br/>` : ""}
+        ${companySiret ? `SIRET&nbsp;: <strong>${companySiret}</strong>` : ""}
+        ${companyInsurance ? `<br/>Assurance RC Pro&nbsp;: ${companyInsurance}` : ""}
       </div>
     </td>
     <td style="width:38%;vertical-align:top;text-align:right;">
       <table style="width:100%;">
-        <tr>
-          <td style="background:${C};color:#fff;padding:9px 18px 8px;
-            border-radius:5px;text-align:center;
-            font-size:14.5pt;font-weight:900;letter-spacing:.4px;line-height:1.25;">
-            CERTIFICAT<br/>DE RAMONAGE
-          </td>
-        </tr>
-        <tr>
-          <td style="padding-top:7px;text-align:center;font-size:8.5pt;color:#555;line-height:1.7;">
-            N°&nbsp;<strong style="font-size:9.5pt;color:${C};">${certNumber}</strong><br/>
-            &#201;mis le&nbsp;<strong>${dateFr}</strong>
-          </td>
-        </tr>
+        <tr><td style="background:${C};color:#fff;padding:10px 18px 9px;border-radius:5px;
+          text-align:center;font-size:14pt;font-weight:900;letter-spacing:.4px;line-height:1.25;">
+          CERTIFICAT<br/>DE RAMONAGE
+        </td></tr>
+        <tr><td style="padding-top:7px;text-align:center;font-size:8.5pt;color:#555;line-height:1.7;">
+          N°&nbsp;<strong style="font-size:9.5pt;color:${C};">${certNumber}</strong><br/>
+          Émis le&nbsp;<strong>${dateFr}</strong>
+        </td></tr>
       </table>
     </td>
   </tr>
 </table>
 
-<!-- SEPARATEUR -->
 <table style="width:100%;margin:10px 0 0;">
-  <tr>
-    <td style="border-top:2.5px solid ${C};padding:0;font-size:0;">&nbsp;</td>
-  </tr>
+  <tr><td style="border-top:2.5px solid ${C};padding:0;font-size:0;">&nbsp;</td></tr>
 </table>
 
-<!-- BANDEAU TITRE -->
-<table style="width:100%;margin:0 0 11px;">
+<table style="width:100%;margin:0 0 8px;">
+  <tr><td style="background:#e8eef6;border-bottom:2px solid ${C};padding:6px 0;text-align:center;
+    font-size:10.5pt;font-weight:900;color:${C};letter-spacing:2px;text-transform:uppercase;">
+    Attestation d'entretien et de ramonage
+  </td></tr>
+</table>
+
+<!-- 1. CLIENT + 2. LOGEMENT -->
+<table style="width:100%;">
   <tr>
-    <td style="background:#e8eef6;border-top:none;border-bottom:2px solid ${C};
-      padding:6px 0;text-align:center;
-      font-size:10.5pt;font-weight:900;color:${C};
-      letter-spacing:2.5px;text-transform:uppercase;">
-      Attestation d'entretien et de ramonage
+    <td style="width:50%;vertical-align:top;padding-right:5px;">
+      ${sectionHead("1", "Client")}
+      <table style="width:100%;" class="box"><tr><td style="padding:9px 11px;">
+        ${lbl("Nom complet")}${val(d.client_name, "margin-bottom:6px;")}
+        ${lbl("Téléphone")}${val(d.client_phone || "—", "margin-bottom:6px;")}
+        ${lbl("Email")}<div style="font-size:9pt;font-weight:600;color:#111;margin-top:1px;">${d.client_email || "—"}</div>
+      </td></tr></table>
+    </td>
+    <td style="width:50%;vertical-align:top;padding-left:5px;">
+      ${sectionHead("2", "Logement / lieu d'intervention")}
+      <table style="width:100%;" class="box"><tr><td style="padding:9px 11px;">
+        ${lbl("Adresse d'intervention")}${val(d.client_address || "—", "margin-bottom:6px;min-height:22px;")}
+        ${lbl("Date d'intervention")}${val(dateFr)}
+      </td></tr></table>
     </td>
   </tr>
 </table>
 
-<!-- ══ CLIENT + INSTALLATION (2 colonnes) ══ -->
-<table style="width:100%;margin-bottom:10px;">
+<!-- 3. IDENTIFICATION DU CONDUIT -->
+${sectionHead("3", "Identification du conduit ramoné")}
+<table style="width:100%;" class="box"><tr><td style="padding:10px 12px;">
+  <table style="width:100%;">
+    <tr>
+      <td style="width:33%;padding-right:8px;">
+        ${lbl("Combustible / appareil")}${val(installationLabels[d.installation_type] || d.installation_type)}
+      </td>
+      <td style="width:33%;padding:0 8px;">
+        ${lbl("Nombre de conduits")}${val(String(conduitCount))}
+      </td>
+      <td style="width:34%;padding-left:8px;">
+        ${lbl("Matériau du conduit")}${val(conduitMat)}
+      </td>
+    </tr>
+  </table>
+</td></tr></table>
+
+<!-- 4. OPÉRATIONS RÉALISÉES -->
+${sectionHead("4", "Opérations réalisées")}
+<table style="width:100%;" class="box">
   <tr>
-    <!-- COLONNE CLIENT -->
-    <td style="width:50%;vertical-align:top;padding-right:6px;">
-      ${sHead("Informations client")}
-      <table style="width:100%;border:1px solid #ccd8e6;border-top:none;border-collapse:collapse;">
-        <tr>
-          <td style="padding:9px 11px 8px;">
-            ${lbl("Nom complet")}
-            ${val(d.client_name, "margin-bottom:7px;")}
-            ${lbl("Adresse d'intervention")}
-            ${val(d.client_address || "—", "margin-bottom:7px;")}
-            <table style="width:100%;">
-              <tr>
-                <td style="width:50%;padding-right:8px;">
-                  ${lbl("T&#233;l&#233;phone")}
-                  ${val(d.client_phone || "—")}
-                </td>
-                <td style="width:50%;">
-                  ${lbl("Email")}
-                  <div style="font-size:8.5pt;font-weight:600;color:#111;margin-top:1px;">
-                    ${d.client_email || "—"}
-                  </div>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
+    <td style="width:50%;padding:10px 12px;vertical-align:top;border-right:1px solid #e2e8f0;">
+      <table style="width:100%;">
+        ${chk(d.cleaning_done, "Ramonage mécanique sur toute la longueur du conduit")}
+        ${chk(d.vacuity_test, "Vérification de la vacuité du conduit", "RÉUSSI", "NON RÉALISÉ")}
       </table>
     </td>
-
-    <!-- COLONNE INSTALLATION -->
-    <td style="width:50%;vertical-align:top;padding-left:6px;">
-      ${sHead("Installation &amp; conduit")}
-      <table style="width:100%;border:1px solid #ccd8e6;border-top:none;border-collapse:collapse;">
-        <tr>
-          <td style="padding:9px 11px 8px;">
-            ${lbl("Type d'appareil")}
-            ${val(installationLabels[d.installation_type] || d.installation_type, "margin-bottom:7px;")}
-            ${lbl("&#201;tat du conduit fum&#233;e")}
-            <div style="font-size:10pt;font-weight:700;margin-top:2px;margin-bottom:7px;
-              color:${conduitOk ? "#15803d" : conduitMajeur ? "#b91c1c" : "#92400e"};">
-              ${conduitOk ? "&#10003;&nbsp;" : "&#9888;&nbsp;"}${conduitLabels[d.conduit_state] || d.conduit_state}
-            </div>
-            ${lbl("Prochain ramonage recommand&#233;")}
-            ${val(nextYearFr)}
-          </td>
-        </tr>
+    <td style="width:50%;padding:10px 12px;vertical-align:top;">
+      <table style="width:100%;">
+        ${chk(true, "Contrôle visuel du foyer et des accessoires")}
+        ${chk(!conduitMajeur, "Conformité réglementaire (DTU 24.1)", "CONFORME", "NON CONFORME")}
       </table>
     </td>
   </tr>
@@ -373,111 +339,79 @@ ${testBanner}
 
 ${conduitAlert}
 
-<!-- ══ OPÉRATIONS RÉALISÉES ══ -->
-${sHead("Op&#233;rations r&#233;alis&#233;es")}
-<table style="width:100%;border:1px solid #ccd8e6;border-top:none;border-collapse:collapse;margin-bottom:10px;">
-  <tr>
-    <!-- COLONNE GAUCHE -->
-    <td style="width:50%;padding:10px 12px;vertical-align:top;border-right:1px solid #e2e8f0;">
-      <table style="width:100%;">
-        ${chkRow(d.cleaning_done, "Ramonage &amp; nettoyage du conduit", "R&#201;ALIS&#201;", "NON R&#201;ALIS&#201;")}
-        ${chkRow(d.vacuity_test,  "Test de vacuit&#233; du conduit",     "R&#201;USSI",   "NON R&#201;ALIS&#201;")}
-      </table>
-    </td>
-    <!-- COLONNE DROITE -->
-    <td style="width:50%;padding:10px 12px;vertical-align:top;">
-      <table style="width:100%;">
-        ${chkOk("V&#233;rification visuelle du foyer", "R&#201;ALIS&#201;")}
-        ${chkRow(
-          !conduitMajeur,
-          "Conformit&#233; r&#233;glementaire",
-          "CONFORME",
-          "NON CONFORME"
-        )}
-      </table>
-    </td>
-  </tr>
+<!-- 5. RÉSULTAT & RECOMMANDATIONS -->
+${sectionHead("5", "Résultat du contrôle & recommandations")}
+<table style="width:100%;" class="box">
+  <tr><td style="padding:10px 12px;">
+    ${lbl("État général du conduit")}
+    <div style="font-size:11pt;font-weight:700;margin-top:3px;
+      color:${conduitOk ? "#15803d" : conduitMajeur ? "#b91c1c" : "#92400e"};">
+      ${conduitOk ? "&#10003;&nbsp;" : "&#9888;&nbsp;"}${conduitLabels[d.conduit_state] || d.conduit_state}
+    </div>
+    <div style="margin-top:8px;">${lbl("Prochain ramonage recommandé")}${val(nextDateFr)}</div>
+  </td></tr>
   ${notesBlock}
   ${recoBlock}
 </table>
 
 ${photosSection}
 
-<!-- ══ SIGNATURE + CACHET ══ -->
-${sHead("Attestation du professionnel")}
-<table style="width:100%;border:1px solid #ccd8e6;border-top:none;border-collapse:collapse;margin-bottom:10px;">
+<!-- SIGNATURE + CACHET -->
+${sectionHead("7", "Attestation du professionnel")}
+<table style="width:100%;" class="box">
   <tr>
-    <!-- INFOS TECHNICIEN -->
     <td style="width:36%;padding:11px 12px;vertical-align:top;border-right:1px solid #e2e8f0;">
-      ${lbl("Technicien agr&#233;&#233;")}
+      ${lbl("Technicien qualifié")}
       <div style="font-size:12pt;font-weight:800;color:${C};margin:4px 0 5px;">${techName || "—"}</div>
       <div style="font-size:8.5pt;color:#444;line-height:1.6;">${companyName}</div>
-      ${companySiret
-        ? `<div style="font-size:7.5pt;color:#888;margin-top:3px;">SIRET&nbsp;: ${companySiret}</div>`
-        : ""}
-      <div style="margin-top:8px;">${lbl("Date d'intervention")}</div>
+      ${companySiret ? `<div style="font-size:7.5pt;color:#888;margin-top:3px;">SIRET&nbsp;: ${companySiret}</div>` : ""}
+      <div style="margin-top:8px;">${lbl("Fait le")}</div>
       <div style="font-size:9.5pt;font-weight:600;color:#111;margin-top:2px;">${dateFr}</div>
     </td>
-
-    <!-- ZONE SIGNATURE -->
     <td style="width:36%;padding:11px 12px;vertical-align:top;border-right:1px solid #e2e8f0;">
       ${lbl("Signature du technicien")}
-      <table style="width:100%;margin-top:6px;">
-        <tr>
-          <td style="border:1.5px dashed #94a3b8;border-radius:5px;
-            padding:10px;text-align:center;height:72px;vertical-align:middle;">
-            ${signatureCell}
-            <div style="font-size:7pt;color:#94a3b8;text-transform:uppercase;
-              letter-spacing:.4px;margin-top:4px;">Signature</div>
-          </td>
-        </tr>
-      </table>
+      <table style="width:100%;margin-top:6px;"><tr>
+        <td style="border:1.5px dashed #94a3b8;border-radius:5px;padding:10px;text-align:center;height:72px;vertical-align:middle;">
+          ${signatureCell}
+          <div style="font-size:7pt;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;margin-top:4px;">Signature</div>
+        </td>
+      </tr></table>
     </td>
-
-    <!-- CACHET OFFICIEL -->
     <td style="width:28%;padding:11px 12px;vertical-align:top;text-align:center;">
       ${lbl("Cachet professionnel")}
-      <table style="width:100%;margin-top:6px;">
-        <tr>
-          <td style="border:2px solid ${C};border-radius:5px;
-            padding:12px 8px;text-align:center;">
-            <div style="font-size:8.5pt;font-weight:800;color:${C};
-              text-transform:uppercase;letter-spacing:.5px;line-height:1.4;
-              border-bottom:1px solid #b0bfcf;padding-bottom:8px;margin-bottom:8px;">
-              Intervenant<br/>qualifi&#233;
-            </div>
-            <div style="font-size:7.5pt;color:#444;line-height:1.6;">
-              NF DTU 24.1<br/>
-              Arr&#234;t&#233; 23/02/2009<br/>
-              <strong style="color:${C};">${dateFr}</strong>
-            </div>
-          </td>
-        </tr>
-      </table>
+      <table style="width:100%;margin-top:6px;"><tr>
+        <td style="border:2px solid ${C};border-radius:5px;padding:12px 8px;text-align:center;">
+          <div style="font-size:8.5pt;font-weight:800;color:${C};text-transform:uppercase;letter-spacing:.5px;
+            line-height:1.4;border-bottom:1px solid #b0bfcf;padding-bottom:8px;margin-bottom:8px;">
+            Intervenant<br/>qualifié
+          </div>
+          <div style="font-size:7.5pt;color:#444;line-height:1.6;">
+            NF DTU 24.1<br/>
+            Arrêté 27/06/2023<br/>
+            <strong style="color:${C};">${dateFr}</strong>
+          </div>
+        </td>
+      </tr></table>
     </td>
   </tr>
 </table>
 
-<!-- ══ PIED DE PAGE LÉGAL ══ -->
-<table style="width:100%;border-top:2px solid ${C};margin-top:8px;">
+<!-- 6 / PIED — MENTIONS LÉGALES -->
+<table style="width:100%;margin-top:10px;border-top:2px solid ${C};">
   <tr>
-    <td style="padding-top:8px;width:72%;padding-right:14px;
-      font-size:7pt;color:#666;line-height:1.6;vertical-align:top;">
-      <strong>R&#233;f&#233;rences r&#233;glementaires&nbsp;:</strong>
-      Ce document est &#233;tabli conform&#233;ment au <strong>DTU&nbsp;24.1</strong> et &#224; l'arr&#234;t&#233; du 23&nbsp;f&#233;vrier&nbsp;2009
-      (JO&nbsp;03/04/2009) relatif aux r&#232;gles de s&#233;curit&#233; applicables aux installations de chauffage.
-      Ramonage obligatoire&nbsp;: <strong>1&nbsp;fois/an</strong> (gaz, fioul) &middot;
-      <strong>2&nbsp;fois/an dont 1 en p&#233;riode de chauffe</strong> (bois, granul&#233;s)
-      &mdash; art.&nbsp;L.&nbsp;111-8 CCH.
-      Le non-respect peut entra&#238;ner le refus de remboursement de sinistre par l'assureur.
+    <td style="padding:8px 0 0;font-size:7.5pt;color:#555;line-height:1.6;">
+      <strong style="color:${C};">Mentions légales &amp; obligations du client&nbsp;:</strong><br/>
+      Certificat établi conformément au <strong>DTU&nbsp;24.1</strong> et à l'<strong>arrêté du 27&nbsp;juin&nbsp;2023</strong>
+      relatif à l'entretien des conduits de fumée. Périodicité légale&nbsp;: <strong>${periodicity}</strong>
+      (art.&nbsp;L.&nbsp;2213-26 CGCT). Ce document doit être <strong>conservé pendant 2&nbsp;ans</strong>
+      et remis à l'assureur en cas de sinistre. Le non-respect de l'obligation de ramonage peut entraîner
+      le refus de prise en charge par l'assurance habitation.
     </td>
-    <td style="padding-top:8px;width:28%;text-align:right;vertical-align:bottom;
-      font-size:7pt;color:#888;line-height:1.6;">
-      G&#233;n&#233;r&#233; le ${dateFr}<br/>
-      R&#233;f.&nbsp;: <strong>${certNumber}</strong>
-      ${isTest
-        ? `<br/><strong style="color:#b91c1c;font-size:7.5pt;">PR&#201;VISUALISATION &mdash; NON OFFICIEL</strong>`
-        : ""}
+  </tr>
+  <tr>
+    <td style="padding-top:6px;text-align:right;font-size:7pt;color:#888;">
+      Généré le ${dateFr} &middot; Réf.&nbsp;<strong>${certNumber}</strong>
+      ${isTest ? `&middot; <strong style="color:#b91c1c;">PRÉVISUALISATION — NON OFFICIEL</strong>` : ""}
     </td>
   </tr>
 </table>
@@ -488,6 +422,7 @@ ${sHead("Attestation du professionnel")}
 </body>
 </html>`;
 }
+
 
 /* ── DocRaptor call ──────────────────────────────────────── */
 
