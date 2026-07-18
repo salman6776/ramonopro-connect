@@ -1,105 +1,62 @@
+## Diagnostic (vérifié)
+
+1. **"Clé Supabase serveur manquante"** — le handler `generateOfficialPdf` lit `process.env.SUPABASE_SERVICE_ROLE_KEY`, or cette variable n'existe pas dans les secrets du projet (`fetch_secrets` renvoie uniquement `GROQ_API_KEY`, `LOVABLE_API_KEY`, `PDF_API_KEY`, `RESEND_API_KEY`). Le handler jette avant même d'appeler DocRaptor.
+2. **Clé DocRaptor mal nommée** — le code lit `process.env.DOCRAPTOR_API_KEY` mais le secret configuré s'appelle `PDF_API_KEY`. Même si le point 1 était corrigé, l'appel DocRaptor échouerait ensuite avec "DOCRAPTOR_API_KEY non configurée".
+3. **Le formulaire appelle toujours `generateOfficialPdf`** (`test: false`), qui exige en plus une ligne `subscriptions.status = 'active'`. Aucun utilisateur ne peut donc générer un PDF aujourd'hui.
+4. **DocRaptor "hack" essai gratuit** — c'est en fait le mode officiel `test: true` : illimité, gratuit, avec filigrane "TEST" sur le PDF. C'est exactement ce que tu veux exploiter avant de basculer sur le mode payant `test: false`.
 
 ## Objectif
 
-1. Rendre l'IA (transcription vocale + génération recommandations + amélioration notes) fiable côté UX : états de chargement clairs, messages d'erreur explicites, bouton "réessayer", timeouts, et l'app ne casse jamais si Groq échoue.
-2. Refaire le HTML du certificat PDF (DocRaptor) pour qu'il ressemble à un vrai **certificat de ramonage réglementaire français** (arrêté du 27/06/2023 + DTU 24.1), en gardant le mode test gratuit DocRaptor.
+- Tout ramoneur peut générer **3 certificats de démonstration gratuits** (filigrane "ESSAI GRATUIT", mode `test: true` DocRaptor, illimité côté DocRaptor).
+- Au-delà, le serveur renvoie un code `SUBSCRIPTION_REQUIRED` et le formulaire redirige vers `/checkout`.
+- Un abonné actif génère des PDF officiels (`test: false`, sans filigrane).
 
----
+## Changements
 
-## 1. Gestion d'erreurs IA robuste
+### 1. `src/lib/docraptor.service.ts` — refonte du client Supabase serveur
 
-### 1.1 Serveur — `src/lib/ai.functions.ts`
-- Ajouter un **timeout** de 20 s sur chaque `fetch` Groq via `AbortSignal.timeout(20000)`.
-- Classifier les erreurs et renvoyer un code stable :
-  - `MISSING_KEY` (pas de `GROQ_API_KEY`)
-  - `RATE_LIMIT` (HTTP 429)
-  - `QUOTA` (HTTP 402 / insufficient_quota)
-  - `TIMEOUT` (AbortError)
-  - `UPSTREAM` (autres 5xx/4xx)
-  - `EMPTY` (réponse vide)
-- Lancer une `Error` avec un message court en français prêt à afficher (`toast.error(err.message)`).
-- Ne pas logger la clé, garder les logs serveur détaillés (`console.error`).
+- Retirer `SUPABASE_SERVICE_ROLE_KEY` et le fetch manuel PostgREST.
+- Ajouter `.middleware([requireSupabaseAuth])` aux deux server functions → `context.supabase` (RLS as user) + `context.userId`.
+- Remplacer chaque appel `sbGet` / `sbPost` / upload storage par le client Supabase authentifié (les policies RLS existantes sur `clients`, `interventions`, `certificates`, `reminders`, `invoices` s'appliquent — c'est ce qu'on veut).
+- Retirer le paramètre `data.user_id` de l'input : dériver de `context.userId` (sécurité — empêche un utilisateur d'écrire pour un autre).
+- Remplacer `process.env.DOCRAPTOR_API_KEY` par `process.env.PDF_API_KEY` (nom réel du secret).
+- Lire l'env variable **à l'intérieur du `.handler()`** (pattern TanStack), pas au top-level.
 
-### 1.2 Client — `src/routes/_authenticated/interventions/new.tsx`
-Créer un petit helper local `runAI(fn, opts)` qui gère :
-- `loading` visible (spinner + texte "IA en cours…")
-- `error` affiché **inline** sous le champ concerné (pas seulement un toast)
-- Bouton **"Réessayer"** à côté du message d'erreur
-- 1 retry auto sur `TIMEOUT` / `RATE_LIMIT` avec backoff 1,5 s
-- L'utilisateur peut **toujours continuer sans IA** (les champs restent éditables)
+### 2. Quota "essai gratuit" (3 previews)
 
-Appliquer à :
-- `VoiceRecorder` (transcription) → afficher état d'erreur dans le composant, garder la note manuelle possible.
-- Bouton **"Améliorer"** (notes) → état inline + retry.
-- Bouton **"Générer avec IA"** (recommandations) → idem.
-
-### 1.3 `src/components/voice-recorder.tsx`
-- Gérer les erreurs micro (permission refusée, pas de micro) avec message clair.
-- Gérer `MediaRecorder` non supporté (Safari iOS) → fallback : bouton désactivé + message "Dictée non supportée sur ce navigateur".
-- Timeout d'enregistrement max 2 min.
-
-### 1.4 Résilience du flux principal
-La génération du **certificat PDF ne dépend jamais de l'IA** : si l'IA échoue, l'utilisateur peut quand même remplir les champs à la main et cliquer "Continuer → Signature → Générer".
-
----
-
-## 2. Refonte du PDF certificat de ramonage
-
-### 2.1 Recherche du format légal
-Un certificat de ramonage réglementaire français (arrêté du 27 juin 2023, applicable depuis oct. 2023) doit contenir **obligatoirement** :
-
-1. **Identification du professionnel** : nom, adresse, SIRET, qualification/assurance RC pro
-2. **Identification du client** : nom, adresse du logement ramoné
-3. **Date de l'intervention**
-4. **Identification précise du conduit** ramoné (type de combustible, appareil raccordé, nombre de conduits)
-5. **Opérations réalisées** : ramonage mécanique sur toute la longueur, vérification vacuité, contrôle des accessoires
-6. **Résultat du contrôle de vacuité** (obligatoire depuis 2023)
-7. **Anomalies constatées** et recommandations
-8. **Rappel de la périodicité légale** (1×/an gaz-fioul, 2×/an bois/granulés dont 1 en période de chauffe)
-9. **Cachet + signature** du professionnel
-
-Le PDF actuel couvre ~70% ; il manque : mention explicite ramonage mécanique + longueur, identification précise du conduit (nombre, matériau), rappel de la garantie assurance habitation, mention arrêté 27/06/2023.
-
-### 2.2 Refonte `buildHtml()` dans `src/lib/docraptor.service.ts`
-Restructurer en 6 blocs numérotés conformes au canevas type des certificats du marché (Ramoneur de France, Poujoulat, etc.) :
+Unifier en une seule server function `generateCertificatePdf` qui décide `test: true` vs `test: false` :
 
 ```
-1. PROFESSIONNEL (encadré haut gauche + logo)   |  N° certificat + date (haut droite)
-2. CLIENT / LOGEMENT
-3. IDENTIFICATION DU CONDUIT (nouveau bloc)
-   - Combustible, appareil raccordé, nb conduits, matériau, accessibilité
-4. OPÉRATIONS RÉALISÉES (checklist étendue)
-   - Ramonage mécanique sur toute la hauteur
-   - Vérification vacuité (obligatoire)
-   - Contrôle visuel foyer + accessoires
-   - Retrait des dépôts de suie/bistre
-5. RÉSULTAT & RECOMMANDATIONS
-   - État du conduit + anomalies + recommandations IA
-6. MENTIONS LÉGALES (bas de page)
-   - "Certificat établi conformément à l'arrêté du 27 juin 2023 et au DTU 24.1"
-   - Rappel périodicité selon combustible
-   - "À conserver 2 ans — à remettre à l'assureur en cas de sinistre"
-7. SIGNATURE + CACHET + N° SIRET
+if subscription active:
+   mode = official (test:false)
+else:
+   count = certificates where intervention.user_id = me AND pdf_url like '%-preview.pdf'
+   if count >= 3:
+      throw { code: "SUBSCRIPTION_REQUIRED", message: "..." }
+   mode = preview (test:true)
 ```
 
-Ajouts concrets au formulaire (`new.tsx`) pour alimenter le nouveau bloc 3 :
-- Champ `conduit_count` (nombre, défaut 1)
-- Champ `conduit_material` (select : maçonné / métallique / tubage inox / autre)
-- Ces champs sont optionnels, valeurs par défaut sensées si non remplis.
+Retour serveur : `{ pdfBase64, pdfUrl, certNumber, mode: "preview"|"official", previewsRemaining }`.
 
-### 2.3 Mode test DocRaptor
-Conserver `test: true` par défaut (générations illimitées gratuites) + bandeau "DOCUMENT DE PRÉVISUALISATION" déjà présent. Pas de changement API.
+### 3. `src/routes/_authenticated/interventions/new.tsx`
 
-### 2.4 Vérification visuelle
-Après implémentation, générer un PDF de test avec données factices, convertir en image (`pdftoppm`) et inspecter que la mise en page tient sur 1 page A4 sans débordement.
+- Appeler la nouvelle `generateCertificatePdf` (au lieu de `generateOfficialPdf`).
+- Retirer `user_id: uid` de la charge (dérivé côté serveur).
+- Toast informatif : "Certificat gratuit N/3 — passez Pro pour retirer le filigrane".
+- Sur erreur `SUBSCRIPTION_REQUIRED` → `toast` + `navigate({ to: "/checkout" })`.
 
----
+### 4. `src/routes/demo.tsx`
 
-## Fichiers modifiés
+- Continuer à appeler la fonction unifiée, sans changer le comportement visible (démo publique reste `test: true`).
 
-- `src/lib/ai.functions.ts` — timeouts, codes d'erreur FR
-- `src/components/voice-recorder.tsx` — gestion erreurs micro + fallback
-- `src/routes/_authenticated/interventions/new.tsx` — helper `runAI` + affichage erreurs inline + retry + 2 nouveaux champs conduit
-- `src/lib/docraptor.service.ts` — refonte `buildHtml()` conforme arrêté 27/06/2023, ajout bloc conduit, mentions légales étoffées, type `FormData` étendu (`conduit_count?`, `conduit_material?`)
+### 5. Secrets
 
-Aucune migration DB requise (les nouveaux champs conduit ne sont utilisés que pour le rendu PDF, pas persistés — sauf si tu veux les stocker, dis-le).
+- `PDF_API_KEY` déjà présent — aucune action.
+- **Ne pas ajouter** `SUPABASE_SERVICE_ROLE_KEY` : le nouveau code n'en a plus besoin (RLS via `requireSupabaseAuth`), donc le bug ne peut pas revenir.
+
+## Notes techniques
+
+- `requireSupabaseAuth` re-valide le bearer à chaque appel → sécurité utilisateur garantie sans clé service role.
+- Le mode `test:true` DocRaptor **n'est pas facturé** et **n'a pas de limite** : c'est le "hack" officiel pour toute la phase preview.
+- Les RLS existantes sur les tables Cloud autorisent déjà `authenticated` à insérer/lire ses propres lignes ; sinon on ajoutera une migration ciblée, mais on ne touche pas au schéma dans un premier temps.
+- Aucun changement de design ni de flux UI hormis le toast quota + redirection checkout.
