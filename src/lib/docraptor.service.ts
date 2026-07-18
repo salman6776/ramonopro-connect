@@ -1,12 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 
-const DOCRAPTOR_KEY = process.env.DOCRAPTOR_API_KEY;
 const SB_URL = "https://esdeyidgtbfandpxtqpr.supabase.co";
-const SB_KEY = () => process.env.SUPABASE_SERVICE_ROLE_KEY as string;
+// Publishable (anon) key — safe to hardcode; RLS enforced via user JWT below.
+const SB_ANON =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzZGV5aWRndGJmYW5kcHh0cXByIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NjYyODEsImV4cCI6MjA5NzE0MjI4MX0.u59bnf0VaC1AM_nqiWFcy0ChxvNJipAb_RuglP3AoGA";
+
+const FREE_PREVIEW_LIMIT = 3;
 
 /* ── Types ──────────────────────────────────────────────── */
 
 export interface FormData {
+  access_token: string; // JWT du user connecté (auth Supabase)
   user_id: string;
   client_name: string;
   client_phone?: string;
@@ -24,30 +28,62 @@ export interface FormData {
   photo_urls?: string[];
 }
 
-/* ── Supabase helpers (service role, bypass RLS) ─────────── */
-
-async function sbGet(table: string, query: string) {
-  const r = await fetch(`${SB_URL}/rest/v1/${table}?${query}`, {
-    headers: { Authorization: `Bearer ${SB_KEY()}`, apikey: SB_KEY(), Accept: "application/json" },
-  });
-  if (!r.ok) throw new Error(`Supabase GET ${table}: ${r.status} ${await r.text()}`);
-  return r.json();
+export class SubscriptionRequiredError extends Error {
+  code = "SUBSCRIPTION_REQUIRED" as const;
+  constructor(message = "Essai gratuit épuisé. Passez Pro pour continuer.") {
+    super(message);
+  }
 }
 
-async function sbPost(table: string, body: unknown, options: { single?: boolean } = {}) {
+/* ── Supabase REST helpers (JWT utilisateur → RLS appliquée) ─ */
+
+function sbHeaders(token: string) {
+  return {
+    Authorization: `Bearer ${token}`,
+    apikey: SB_ANON,
+  };
+}
+
+async function sbGet(token: string, table: string, query: string, extraHeaders: Record<string, string> = {}) {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${query}`, {
+    headers: { ...sbHeaders(token), Accept: "application/json", ...extraHeaders },
+  });
+  if (!r.ok) throw new Error(`Supabase GET ${table}: ${r.status} ${await r.text()}`);
+  return r;
+}
+
+async function sbPost<T = Record<string, unknown>>(token: string, table: string, body: unknown, single = true): Promise<T> {
   const r = await fetch(`${SB_URL}/rest/v1/${table}`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${SB_KEY()}`,
-      apikey: SB_KEY(),
+      ...sbHeaders(token),
       "Content-Type": "application/json",
-      Prefer: options.single ? "return=representation" : "return=representation",
+      Prefer: "return=representation",
     },
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`Supabase POST ${table}: ${r.status} ${await r.text()}`);
   const json = await r.json();
-  return options.single ? json[0] : json;
+  return single ? json[0] : json;
+}
+
+async function uploadPdfToStorage(token: string, pdfBytes: Uint8Array, path: string): Promise<string> {
+  const upRes = await fetch(`${SB_URL}/storage/v1/object/certificates/${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: SB_ANON,
+      "Content-Type": "application/pdf",
+      "x-upsert": "true",
+    },
+    body: pdfBytes.buffer as ArrayBuffer,
+  });
+  if (!upRes.ok) {
+    // Non bloquant : on retourne le PDF au client même sans stockage.
+    console.warn("PDF storage failed:", upRes.status, await upRes.text());
+    return "";
+  }
+  return `${SB_URL}/storage/v1/object/public/certificates/${path}`;
 }
 
 /* ── Image → base64 (safe for large files) ─────────────── */
@@ -59,7 +95,6 @@ async function toBase64(url: string): Promise<string | null> {
     const buf = await r.arrayBuffer();
     const bytes = new Uint8Array(buf);
     const mime = r.headers.get("content-type") ?? "image/jpeg";
-    // Chunked encoding — avoids call-stack overflow with large images
     let binary = "";
     const CHUNK = 8192;
     for (let i = 0; i < bytes.length; i += CHUNK) {
@@ -103,7 +138,6 @@ function buildHtml(params: {
     autre: "Autre",
   };
 
-  // Fréquence légale selon combustible
   const isSolidFuel = d.installation_type === "bois" || d.installation_type === "granulés";
   const periodicity = isSolidFuel
     ? "2 ramonages par an, dont 1 pendant la période de chauffe (bois / granulés)"
@@ -240,7 +274,6 @@ ${isTest ? `<div style="position:fixed;top:46%;left:50%;
 
 ${testBanner}
 
-<!-- EN-TÊTE -->
 <table style="width:100%;">
   <tr>
     <td style="width:62%;vertical-align:top;padding-right:16px;">
@@ -279,7 +312,6 @@ ${testBanner}
   </td></tr>
 </table>
 
-<!-- 1. CLIENT + 2. LOGEMENT -->
 <table style="width:100%;">
   <tr>
     <td style="width:50%;vertical-align:top;padding-right:5px;">
@@ -300,7 +332,6 @@ ${testBanner}
   </tr>
 </table>
 
-<!-- 3. IDENTIFICATION DU CONDUIT -->
 ${sectionHead("3", "Identification du conduit ramoné")}
 <table style="width:100%;" class="box"><tr><td style="padding:10px 12px;">
   <table style="width:100%;">
@@ -318,7 +349,6 @@ ${sectionHead("3", "Identification du conduit ramoné")}
   </table>
 </td></tr></table>
 
-<!-- 4. OPÉRATIONS RÉALISÉES -->
 ${sectionHead("4", "Opérations réalisées")}
 <table style="width:100%;" class="box">
   <tr>
@@ -339,7 +369,6 @@ ${sectionHead("4", "Opérations réalisées")}
 
 ${conduitAlert}
 
-<!-- 5. RÉSULTAT & RECOMMANDATIONS -->
 ${sectionHead("5", "Résultat du contrôle & recommandations")}
 <table style="width:100%;" class="box">
   <tr><td style="padding:10px 12px;">
@@ -356,7 +385,6 @@ ${sectionHead("5", "Résultat du contrôle & recommandations")}
 
 ${photosSection}
 
-<!-- SIGNATURE + CACHET -->
 ${sectionHead("7", "Attestation du professionnel")}
 <table style="width:100%;" class="box">
   <tr>
@@ -396,7 +424,6 @@ ${sectionHead("7", "Attestation du professionnel")}
   </tr>
 </table>
 
-<!-- 6 / PIED — MENTIONS LÉGALES -->
 <table style="width:100%;margin-top:10px;border-top:2px solid ${C};">
   <tr>
     <td style="padding:8px 0 0;font-size:7.5pt;color:#555;line-height:1.6;">
@@ -423,21 +450,21 @@ ${sectionHead("7", "Attestation du professionnel")}
 </html>`;
 }
 
-
 /* ── DocRaptor call ──────────────────────────────────────── */
 
 async function callDocRaptor(html: string, opts: { test: boolean; name: string }): Promise<{ pdfBytes: Uint8Array; pdfBase64: string }> {
-  if (!DOCRAPTOR_KEY) throw new Error("DOCRAPTOR_API_KEY non configurée côté serveur.");
+  const key = process.env.PDF_API_KEY || process.env.DOCRAPTOR_API_KEY;
+  if (!key) throw new Error("Clé DocRaptor manquante (PDF_API_KEY).");
 
   const res = await fetch("https://docraptor.com/docs", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Basic ${btoa(DOCRAPTOR_KEY + ":")}`,
+      Authorization: `Basic ${btoa(key + ":")}`,
     },
     body: JSON.stringify({
       doc: {
-        test: opts.test,
+        test: opts.test, // test:true = illimité gratuit avec filigrane DocRaptor
         type: "pdf",
         document_content: html,
         name: opts.name,
@@ -448,217 +475,31 @@ async function callDocRaptor(html: string, opts: { test: boolean; name: string }
 
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(`DocRaptor erreur (${res.status}): ${txt.slice(0, 500)}`);
+    throw new Error(`DocRaptor (${res.status}) : ${txt.slice(0, 300)}`);
   }
 
   const pdfBytes = new Uint8Array(await res.arrayBuffer());
-
-  // Convert to base64 safely (chunked to avoid stack overflow)
   let binary = "";
   const CHUNK = 8192;
   for (let i = 0; i < pdfBytes.length; i += CHUNK) {
     binary += String.fromCharCode(...pdfBytes.subarray(i, i + CHUNK));
   }
-  const pdfBase64 = btoa(binary);
-
-  return { pdfBytes, pdfBase64 };
-}
-
-/* ── Upload PDF to Supabase Storage ─────────────────────── */
-
-async function uploadPdfToStorage(pdfBytes: Uint8Array, path: string): Promise<string> {
-  const upRes = await fetch(`${SB_URL}/storage/v1/object/certificates/${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${SB_KEY()}`,
-      "Content-Type": "application/pdf",
-      "x-upsert": "true",
-    },
-    body: pdfBytes.buffer as ArrayBuffer,
-  });
-  if (!upRes.ok) {
-    const err = await upRes.text();
-    throw new Error(`Stockage PDF échoué (${upRes.status}): ${err}`);
-  }
-  return `${SB_URL}/storage/v1/object/public/certificates/${path}`;
+  return { pdfBytes, pdfBase64: btoa(binary) };
 }
 
 /* ── Certificate number ──────────────────────────────────── */
 
-async function nextCertNumber(userId: string): Promise<string> {
-  const r = await fetch(
-    `${SB_URL}/rest/v1/certificates?user_id=eq.${userId}&select=id`,
-    { headers: { Authorization: `Bearer ${SB_KEY()}`, apikey: SB_KEY(), Prefer: "count=exact" } }
-  );
-  const range = r.headers.get("content-range") ?? "0-0/0";
-  const total = parseInt(range.split("/")[1] ?? "0", 10) || 0;
-  return `CERT-${new Date().getFullYear()}-${String(total + 1).padStart(4, "0")}`;
+async function nextCertNumber(token: string, userId: string): Promise<string> {
+  try {
+    const r = await sbGet(token, "certificates", `select=id`, { Prefer: "count=exact", Range: "0-0" });
+    const range = r.headers.get("content-range") ?? "0-0/0";
+    const total = parseInt(range.split("/")[1] ?? "0", 10) || 0;
+    return `CERT-${new Date().getFullYear()}-${String(total + 1).padStart(4, "0")}`;
+  } catch {
+    return `CERT-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
+  }
+  void userId;
 }
-
-/* ══════════════════════════════════════════════════════════
-   generatePreviewPdf — essai gratuit (DocRaptor test:true)
-   Fait TOUT côté serveur : client, intervention, cert, reminder
-══════════════════════════════════════════════════════════ */
-
-export const generatePreviewPdf = createServerFn({ method: "POST" })
-  .inputValidator((d: FormData) => {
-    if (!d.client_name?.trim()) throw new Error("Nom du client requis");
-    if (!d.user_id) throw new Error("user_id requis");
-    return d;
-  })
-  .handler(async ({ data }) => {
-    const sbKey = SB_KEY();
-    if (!sbKey) throw new Error("Clé Supabase serveur manquante.");
-
-    // 1. Récupérer le profil du technicien
-    const profiles: Record<string, unknown>[] = await sbGet("profiles", `id=eq.${data.user_id}&limit=1`);
-    const profile = profiles[0] ?? {};
-
-    // 2. Créer le client
-    const client = await sbPost("clients", {
-      user_id: data.user_id,
-      full_name: data.client_name,
-      phone: data.client_phone || null,
-      address: data.client_address || null,
-      email: data.client_email || null,
-    }, { single: true });
-
-    // 3. Créer l'intervention
-    const now = new Date().toISOString();
-    const intervention = await sbPost("interventions", {
-      user_id: data.user_id,
-      client_id: client.id,
-      intervention_date: now,
-      installation_type: data.installation_type,
-      conduit_state: data.conduit_state,
-      cleaning_done: data.cleaning_done,
-      vacuity_test: data.vacuity_test,
-      notes: data.notes || null,
-      photos_urls: data.photo_urls?.length ? data.photo_urls : null,
-    }, { single: true });
-
-    // 4. Construire le HTML (photos en base64)
-    const photoBlocks = await buildPhotoBlocksSafe(data.photo_urls);
-    const certNumber = await nextCertNumber(data.user_id);
-    const html = buildHtml({ data, certNumber, isTest: true, profile, photoBlocks });
-
-    // 5. Appel DocRaptor
-    const { pdfBytes, pdfBase64 } = await callDocRaptor(html, {
-      test: true,
-      name: `${certNumber}-preview`,
-    });
-
-    // 6. Stocker le PDF
-    const storagePath = `${data.user_id}/${certNumber}-preview.pdf`;
-    const pdfUrl = await uploadPdfToStorage(pdfBytes, storagePath);
-
-    // 7. Enregistrer certificat (pas de user_id dans la table)
-    await sbPost("certificates", {
-      intervention_id: intervention.id,
-      pdf_url: pdfUrl,
-    });
-
-    // 8. Créer rappel (11 mois) — colonne scheduled_date, status "scheduled"
-    const reminderDate = new Date(now);
-    reminderDate.setMonth(reminderDate.getMonth() + 11);
-    await sbPost("reminders", {
-      intervention_id: intervention.id,
-      client_id: client.id,
-      scheduled_date: reminderDate.toISOString(),
-      status: "scheduled",
-    });
-
-    return { pdfBase64, pdfUrl, certNumber, interventionId: intervention.id };
-  });
-
-/* ══════════════════════════════════════════════════════════
-   generateOfficialPdf — abonné payant (DocRaptor test:false)
-   Vérifie l'abonnement, fait TOUT côté serveur
-══════════════════════════════════════════════════════════ */
-
-export const generateOfficialPdf = createServerFn({ method: "POST" })
-  .inputValidator((d: FormData) => {
-    if (!d.client_name?.trim()) throw new Error("Nom du client requis");
-    if (!d.user_id) throw new Error("user_id requis");
-    return d;
-  })
-  .handler(async ({ data }) => {
-    const sbKey = SB_KEY();
-    if (!sbKey) throw new Error("Clé Supabase serveur manquante.");
-
-    // 1. Vérifier abonnement actif
-    const subs: unknown[] = await sbGet("subscriptions", `user_id=eq.${data.user_id}&status=eq.active&limit=1`);
-    if (!subs || subs.length === 0) {
-      throw new Error("Abonnement actif requis pour générer un certificat officiel. Souscrivez sur la page d'abonnement.");
-    }
-
-    // 2. Récupérer le profil du technicien
-    const profiles: Record<string, unknown>[] = await sbGet("profiles", `id=eq.${data.user_id}&limit=1`);
-    const profile = profiles[0] ?? {};
-
-    // 3. Créer le client (full_name = vrai nom de colonne)
-    const client = await sbPost("clients", {
-      user_id: data.user_id,
-      full_name: data.client_name,
-      phone: data.client_phone || null,
-      address: data.client_address || null,
-      email: data.client_email || null,
-    }, { single: true });
-
-    // 4. Créer l'intervention (photos_urls, pas photos; pas de recommendations)
-    const now = new Date().toISOString();
-    const intervention = await sbPost("interventions", {
-      user_id: data.user_id,
-      client_id: client.id,
-      intervention_date: now,
-      installation_type: data.installation_type,
-      conduit_state: data.conduit_state,
-      cleaning_done: data.cleaning_done,
-      vacuity_test: data.vacuity_test,
-      notes: data.notes || null,
-      photos_urls: data.photo_urls?.length ? data.photo_urls : null,
-    }, { single: true });
-
-    // 5. Construire le HTML
-    const photoBlocks = await buildPhotoBlocksSafe(data.photo_urls);
-    const certNumber = await nextCertNumber(data.user_id);
-    const html = buildHtml({ data, certNumber, isTest: false, profile, photoBlocks });
-
-    // 6. Appel DocRaptor (production, sans filigrane)
-    const { pdfBytes, pdfBase64 } = await callDocRaptor(html, {
-      test: false,
-      name: `${certNumber}-official`,
-    });
-
-    // 7. Stocker le PDF
-    const storagePath = `${data.user_id}/${certNumber}-official.pdf`;
-    const pdfUrl = await uploadPdfToStorage(pdfBytes, storagePath);
-
-    // 8. Enregistrer certificat (pas de user_id dans la table)
-    await sbPost("certificates", {
-      intervention_id: intervention.id,
-      pdf_url: pdfUrl,
-    });
-
-    // 9. Créer rappel (11 mois) — scheduled_date, status "scheduled"
-    const reminderDate = new Date(now);
-    reminderDate.setMonth(reminderDate.getMonth() + 11);
-    await sbPost("reminders", {
-      intervention_id: intervention.id,
-      client_id: client.id,
-      scheduled_date: reminderDate.toISOString(),
-      status: "scheduled",
-    });
-
-    // 10. Créer facture (pas de invoice_number dans la table)
-    await sbPost("invoices", {
-      intervention_id: intervention.id,
-      amount: (profile.default_price as number) || 80,
-      status: "pending",
-    }).catch(() => {});
-
-    return { pdfBase64, pdfUrl, certNumber, interventionId: intervention.id };
-  });
 
 /* ── Helper: photos → HTML blocks ───────────────────────── */
 
@@ -673,3 +514,155 @@ async function buildPhotoBlocksSafe(urls?: string[]): Promise<string> {
   );
   return items.filter(Boolean).join("");
 }
+
+/* ── Coeur partagé ──────────────────────────────────────── */
+
+async function runPipeline(data: FormData, isTest: boolean) {
+  const token = data.access_token;
+  if (!token) throw new Error("Session expirée. Reconnectez-vous.");
+  if (!data.user_id) throw new Error("Utilisateur inconnu.");
+
+  // 1. Profil du technicien
+  let profile: Record<string, unknown> = {};
+  try {
+    const r = await sbGet(token, "profiles", `id=eq.${data.user_id}&limit=1`);
+    const arr = (await r.json()) as Record<string, unknown>[];
+    profile = arr[0] ?? {};
+  } catch (e) {
+    console.warn("Profile fetch failed:", e);
+  }
+
+  // 2. Créer client
+  const client = await sbPost<{ id: string }>(token, "clients", {
+    user_id: data.user_id,
+    full_name: data.client_name,
+    phone: data.client_phone || null,
+    address: data.client_address || null,
+    email: data.client_email || null,
+  });
+
+  // 3. Créer intervention
+  const now = new Date().toISOString();
+  const intervention = await sbPost<{ id: string }>(token, "interventions", {
+    user_id: data.user_id,
+    client_id: client.id,
+    intervention_date: now,
+    installation_type: data.installation_type,
+    conduit_state: data.conduit_state,
+    cleaning_done: data.cleaning_done,
+    vacuity_test: data.vacuity_test,
+    notes: data.notes || null,
+    photos_urls: data.photo_urls?.length ? data.photo_urls : null,
+  });
+
+  // 4. HTML + PDF
+  const photoBlocks = await buildPhotoBlocksSafe(data.photo_urls);
+  const certNumber = await nextCertNumber(token, data.user_id);
+  const html = buildHtml({ data, certNumber, isTest, profile, photoBlocks });
+  const suffix = isTest ? "preview" : "official";
+  const { pdfBytes, pdfBase64 } = await callDocRaptor(html, { test: isTest, name: `${certNumber}-${suffix}` });
+
+  // 5. Storage (best-effort)
+  const storagePath = `${data.user_id}/${certNumber}-${suffix}.pdf`;
+  const pdfUrl = await uploadPdfToStorage(token, pdfBytes, storagePath);
+
+  // 6. Certificat en base
+  await sbPost(token, "certificates", {
+    intervention_id: intervention.id,
+    pdf_url: pdfUrl || `local:${certNumber}`,
+  }).catch((e) => console.warn("cert insert:", e));
+
+  // 7. Rappel 11 mois
+  const reminderDate = new Date(now);
+  reminderDate.setMonth(reminderDate.getMonth() + 11);
+  await sbPost(token, "reminders", {
+    intervention_id: intervention.id,
+    client_id: client.id,
+    scheduled_date: reminderDate.toISOString(),
+    status: "scheduled",
+  }).catch((e) => console.warn("reminder insert:", e));
+
+  // 8. Facture (seulement en officiel)
+  if (!isTest) {
+    await sbPost(token, "invoices", {
+      intervention_id: intervention.id,
+      amount: (profile.default_price as number) || 80,
+      status: "pending",
+    }).catch((e) => console.warn("invoice insert:", e));
+  }
+
+  return { pdfBase64, pdfUrl, certNumber, interventionId: intervention.id };
+}
+
+async function hasActiveSubscription(token: string, userId: string): Promise<boolean> {
+  try {
+    const r = await sbGet(token, "subscriptions", `user_id=eq.${userId}&status=eq.active&limit=1&select=id`);
+    const arr = (await r.json()) as unknown[];
+    return arr.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function countPreviewsUsed(token: string, userId: string): Promise<number> {
+  try {
+    const r = await sbGet(
+      token,
+      "certificates",
+      `select=id,pdf_url,intervention_id,interventions!inner(user_id)&interventions.user_id=eq.${userId}&pdf_url=like.*preview*`,
+      { Prefer: "count=exact", Range: "0-0" }
+    );
+    const range = r.headers.get("content-range") ?? "0-0/0";
+    return parseInt(range.split("/")[1] ?? "0", 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   generateCertificatePdf — unifié : preview illimité (3 gratuits)
+   puis blocage vers abonnement
+══════════════════════════════════════════════════════════ */
+
+export const generateCertificatePdf = createServerFn({ method: "POST" })
+  .inputValidator((d: FormData) => {
+    if (!d.client_name?.trim()) throw new Error("Nom du client requis");
+    if (!d.user_id) throw new Error("user_id requis");
+    if (!d.access_token) throw new Error("access_token requis");
+    return d;
+  })
+  .handler(async ({ data }) => {
+    const isSubscribed = await hasActiveSubscription(data.access_token, data.user_id);
+
+    if (isSubscribed) {
+      const result = await runPipeline(data, false);
+      return { ...result, mode: "official" as const, previewsRemaining: null as number | null };
+    }
+
+    const used = await countPreviewsUsed(data.access_token, data.user_id);
+    if (used >= FREE_PREVIEW_LIMIT) {
+      throw new SubscriptionRequiredError(
+        `Vous avez utilisé vos ${FREE_PREVIEW_LIMIT} certificats d'essai gratuits. Passez Pro pour continuer.`,
+      );
+    }
+
+    const result = await runPipeline(data, true);
+    return {
+      ...result,
+      mode: "preview" as const,
+      previewsRemaining: Math.max(0, FREE_PREVIEW_LIMIT - used - 1),
+    };
+  });
+
+/* ── Alias de compatibilité (demo.tsx) ──────────────────── */
+
+export const generatePreviewPdf = createServerFn({ method: "POST" })
+  .inputValidator((d: FormData) => {
+    if (!d.client_name?.trim()) throw new Error("Nom du client requis");
+    if (!d.user_id) throw new Error("user_id requis");
+    if (!d.access_token) throw new Error("access_token requis");
+    return d;
+  })
+  .handler(async ({ data }) => runPipeline(data, true));
+
+export const generateOfficialPdf = generateCertificatePdf;
