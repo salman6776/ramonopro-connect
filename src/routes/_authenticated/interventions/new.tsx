@@ -128,8 +128,17 @@ function NewIntervention() {
 
       // 2. Appel serveur — crée client, intervention, PDF officiel, certificat, rappel, facture
       toast.loading("Génération du certificat officiel…", { id: "pdf-gen" });
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        toast.dismiss("pdf-gen");
+        toast.error("Session expirée. Reconnectez-vous.");
+        setBusy(false);
+        return;
+      }
       const result = await genPDF({
         data: {
+          access_token: token,
           user_id: uid,
           client_name: clientName,
           client_phone: clientPhone || undefined,
@@ -163,13 +172,28 @@ function NewIntervention() {
       document.body.removeChild(a);
       URL.revokeObjectURL(dlUrl);
 
-      toast.success(`${result.certNumber} généré et téléchargé ✓`);
+      if (result.mode === "preview") {
+        const left = result.previewsRemaining ?? 0;
+        toast.success(
+          left > 0
+            ? `Essai gratuit — ${left} certificat(s) restant(s). Passez Pro pour retirer le filigrane.`
+            : `Dernier essai gratuit utilisé. Passez Pro pour continuer sans filigrane.`,
+        );
+      } else {
+        toast.success(`${result.certNumber} généré et téléchargé ✓`);
+      }
       qc.invalidateQueries();
       navigate({ to: "/interventions" });
     } catch (err) {
       console.error("PDF generation error:", err);
       toast.dismiss("pdf-gen");
-      toast.error(err instanceof Error ? err.message : "Erreur lors de la génération");
+      const msg = err instanceof Error ? err.message : "Erreur lors de la génération";
+      if (msg.includes("Passez Pro") || msg.includes("essai") || msg.toLowerCase().includes("subscription")) {
+        toast.error(msg);
+        navigate({ to: "/checkout" });
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setBusy(false);
     }

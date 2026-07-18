@@ -117,8 +117,12 @@ function DemoPage() {
       }
 
       // 2. Appel serveur — crée client, intervention, PDF, certificat, rappel
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error("Session expirée. Reconnectez-vous.");
       const result = await genPreview({
         data: {
+          access_token: token,
           user_id: user.id,
           client_name: clientName,
           client_phone: clientPhone || undefined,
