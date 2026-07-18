@@ -128,8 +128,17 @@ function NewIntervention() {
 
       // 2. Appel serveur — crée client, intervention, PDF officiel, certificat, rappel, facture
       toast.loading("Génération du certificat officiel…", { id: "pdf-gen" });
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        toast.dismiss("pdf-gen");
+        toast.error("Session expirée. Reconnectez-vous.");
+        setBusy(false);
+        return;
+      }
       const result = await genPDF({
         data: {
+          access_token: token,
           user_id: uid,
           client_name: clientName,
           client_phone: clientPhone || undefined,
