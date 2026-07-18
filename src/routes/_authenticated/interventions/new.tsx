@@ -172,13 +172,28 @@ function NewIntervention() {
       document.body.removeChild(a);
       URL.revokeObjectURL(dlUrl);
 
-      toast.success(`${result.certNumber} généré et téléchargé ✓`);
+      if (result.mode === "preview") {
+        const left = result.previewsRemaining ?? 0;
+        toast.success(
+          left > 0
+            ? `Essai gratuit — ${left} certificat(s) restant(s). Passez Pro pour retirer le filigrane.`
+            : `Dernier essai gratuit utilisé. Passez Pro pour continuer sans filigrane.`,
+        );
+      } else {
+        toast.success(`${result.certNumber} généré et téléchargé ✓`);
+      }
       qc.invalidateQueries();
       navigate({ to: "/interventions" });
     } catch (err) {
       console.error("PDF generation error:", err);
       toast.dismiss("pdf-gen");
-      toast.error(err instanceof Error ? err.message : "Erreur lors de la génération");
+      const msg = err instanceof Error ? err.message : "Erreur lors de la génération";
+      if (msg.includes("Passez Pro") || msg.includes("essai") || msg.toLowerCase().includes("subscription")) {
+        toast.error(msg);
+        navigate({ to: "/checkout" });
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setBusy(false);
     }
