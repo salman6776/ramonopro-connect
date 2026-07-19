@@ -1,62 +1,30 @@
-## Diagnostic (vérifié)
+## Diagnostic vérifié
 
-1. **"Clé Supabase serveur manquante"** — le handler `generateOfficialPdf` lit `process.env.SUPABASE_SERVICE_ROLE_KEY`, or cette variable n'existe pas dans les secrets du projet (`fetch_secrets` renvoie uniquement `GROQ_API_KEY`, `LOVABLE_API_KEY`, `PDF_API_KEY`, `RESEND_API_KEY`). Le handler jette avant même d'appeler DocRaptor.
-2. **Clé DocRaptor mal nommée** — le code lit `process.env.DOCRAPTOR_API_KEY` mais le secret configuré s'appelle `PDF_API_KEY`. Même si le point 1 était corrigé, l'appel DocRaptor échouerait ensuite avec "DOCRAPTOR_API_KEY non configurée".
-3. **Le formulaire appelle toujours `generateOfficialPdf`** (`test: false`), qui exige en plus une ligne `subscriptions.status = 'active'`. Aucun utilisateur ne peut donc générer un PDF aujourd'hui.
-4. **DocRaptor "hack" essai gratuit** — c'est en fait le mode officiel `test: true` : illimité, gratuit, avec filigrane "TEST" sur le PDF. C'est exactement ce que tu veux exploiter avant de basculer sur le mode payant `test: false`.
+- Secret `PDF_API_KEY` bien présent côté projet (confirmé via `fetch_secrets`).
+- L'erreur `401 Please provide a valid API key` vient donc de DocRaptor lui‑même : la valeur stockée dans `PDF_API_KEY` n'est pas une clé DocRaptor valide (mauvaise clé collée, clé révoquée, ou valeur d'un autre service).
+- Le code `callDocRaptor` est correct (Basic auth `key:` en base64, endpoint OK, `test: true` transmis).
 
-## Objectif
+## Le "hack" DocRaptor que tu voulais exploiter
 
-- Tout ramoneur peut générer **3 certificats de démonstration gratuits** (filigrane "ESSAI GRATUIT", mode `test: true` DocRaptor, illimité côté DocRaptor).
-- Au-delà, le serveur renvoie un code `SUBSCRIPTION_REQUIRED` et le formulaire redirige vers `/checkout`.
-- Un abonné actif génère des PDF officiels (`test: false`, sans filigrane).
+DocRaptor accepte la **clé publique de démo `YOUR_API_KEY_HERE**` pour tout appel avec `test: true`. Illimité, gratuit, aucun compte requis, filigrane "TEST" ajouté par DocRaptor. C'est le vrai hack — pas besoin de secret valide tant qu'on reste en mode preview.
 
-## Changements
+## Correctif (une seule bonne fois)
 
-### 1. `src/lib/docraptor.service.ts` — refonte du client Supabase serveur
+Dans `src/lib/docraptor.service.ts → callDocRaptor` :
 
-- Retirer `SUPABASE_SERVICE_ROLE_KEY` et le fetch manuel PostgREST.
-- Ajouter `.middleware([requireSupabaseAuth])` aux deux server functions → `context.supabase` (RLS as user) + `context.userId`.
-- Remplacer chaque appel `sbGet` / `sbPost` / upload storage par le client Supabase authentifié (les policies RLS existantes sur `clients`, `interventions`, `certificates`, `reminders`, `invoices` s'appliquent — c'est ce qu'on veut).
-- Retirer le paramètre `data.user_id` de l'input : dériver de `context.userId` (sécurité — empêche un utilisateur d'écrire pour un autre).
-- Remplacer `process.env.DOCRAPTOR_API_KEY` par `process.env.PDF_API_KEY` (nom réel du secret).
-- Lire l'env variable **à l'intérieur du `.handler()`** (pattern TanStack), pas au top-level.
+1. **Mode `test: true**` → toujours utiliser la clé démo publique `YOUR_API_KEY_HERE`, **on ignore complètement `PDF_API_KEY**`. Résultat : la génération de preview ne peut plus jamais échouer sur un 401, quoi qu'il y ait dans les secrets.
+2. **Mode `test: false**` (uniquement quand un abonnement actif existe) → utiliser `PDF_API_KEY`. Si absente ou invalide → message d'erreur clair invitant à mettre à jour le secret (au lieu du 401 brut actuel).
+3. Log serveur explicite du mode + statut HTTP + premières lignes de réponse DocRaptor pour diagnostiquer à froid.
 
-### 2. Quota "essai gratuit" (3 previews)
+Aucune autre modification : le pipeline (`runPipeline`), la limite 3 previews, la redirection `/checkout`, le template HTML, l'upload storage — tout reste identique.
 
-Unifier en une seule server function `generateCertificatePdf` qui décide `test: true` vs `test: false` :
+## Après le fix
 
-```
-if subscription active:
-   mode = official (test:false)
-else:
-   count = certificates where intervention.user_id = me AND pdf_url like '%-preview.pdf'
-   if count >= 3:
-      throw { code: "SUBSCRIPTION_REQUIRED", message: "..." }
-   mode = preview (test:true)
-```
+Tu pourras générer des certificats de test à l'infini immédiatement, sans toucher aux secrets. Le jour où tu veux les PDF officiels sans filigrane, on met à jour `PDF_API_KEY` avec ta vraie clé DocRaptor et on bascule l'abonnement en `active`.
 
-Retour serveur : `{ pdfBase64, pdfUrl, certNumber, mode: "preview"|"official", previewsRemaining }`.
+Pas qie infini mais une fois le doc test geberer le compteur sur la page tombe a zero et redirigé vers la page de paiement évidemment visuellement attirant du genre passer en pro pour... Ect
 
-### 3. `src/routes/_authenticated/interventions/new.tsx`
+## Fichier touché
 
-- Appeler la nouvelle `generateCertificatePdf` (au lieu de `generateOfficialPdf`).
-- Retirer `user_id: uid` de la charge (dérivé côté serveur).
-- Toast informatif : "Certificat gratuit N/3 — passez Pro pour retirer le filigrane".
-- Sur erreur `SUBSCRIPTION_REQUIRED` → `toast` + `navigate({ to: "/checkout" })`.
-
-### 4. `src/routes/demo.tsx`
-
-- Continuer à appeler la fonction unifiée, sans changer le comportement visible (démo publique reste `test: true`).
-
-### 5. Secrets
-
-- `PDF_API_KEY` déjà présent — aucune action.
-- **Ne pas ajouter** `SUPABASE_SERVICE_ROLE_KEY` : le nouveau code n'en a plus besoin (RLS via `requireSupabaseAuth`), donc le bug ne peut pas revenir.
-
-## Notes techniques
-
-- `requireSupabaseAuth` re-valide le bearer à chaque appel → sécurité utilisateur garantie sans clé service role.
-- Le mode `test:true` DocRaptor **n'est pas facturé** et **n'a pas de limite** : c'est le "hack" officiel pour toute la phase preview.
-- Les RLS existantes sur les tables Cloud autorisent déjà `authenticated` à insérer/lire ses propres lignes ; sinon on ajoutera une migration ciblée, mais on ne touche pas au schéma dans un premier temps.
-- Aucun changement de design ni de flux UI hormis le toast quota + redirection checkout.
+- `src/lib/docraptor.service.ts` (fonction `callDocRaptor` uniquement — ~15 lignes)
+  &nbsp;
