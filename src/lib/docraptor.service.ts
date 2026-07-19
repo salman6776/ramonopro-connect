@@ -453,8 +453,18 @@ ${sectionHead("7", "Attestation du professionnel")}
 /* ── DocRaptor call ──────────────────────────────────────── */
 
 async function callDocRaptor(html: string, opts: { test: boolean; name: string }): Promise<{ pdfBytes: Uint8Array; pdfBase64: string }> {
-  const key = process.env.PDF_API_KEY || process.env.DOCRAPTOR_API_KEY;
-  if (!key) throw new Error("Clé DocRaptor manquante (PDF_API_KEY).");
+  // Hack officiel DocRaptor : la clé publique "YOUR_API_KEY_HERE" fonctionne
+  // en illimité tant que test:true. On l'utilise systématiquement pour les
+  // previews — la valeur de PDF_API_KEY ne peut plus casser la génération.
+  const key = opts.test
+    ? "YOUR_API_KEY_HERE"
+    : (process.env.PDF_API_KEY || process.env.DOCRAPTOR_API_KEY || "");
+
+  if (!opts.test && !key) {
+    throw new Error(
+      "Génération officielle indisponible : clé DocRaptor manquante. Mettez à jour le secret PDF_API_KEY.",
+    );
+  }
 
   const res = await fetch("https://docraptor.com/docs", {
     method: "POST",
@@ -464,7 +474,7 @@ async function callDocRaptor(html: string, opts: { test: boolean; name: string }
     },
     body: JSON.stringify({
       doc: {
-        test: opts.test, // test:true = illimité gratuit avec filigrane DocRaptor
+        test: opts.test,
         type: "pdf",
         document_content: html,
         name: opts.name,
@@ -475,6 +485,10 @@ async function callDocRaptor(html: string, opts: { test: boolean; name: string }
 
   if (!res.ok) {
     const txt = await res.text();
+    console.error(`[DocRaptor] mode=${opts.test ? "test" : "official"} status=${res.status} body=${txt.slice(0, 400)}`);
+    if (!opts.test && res.status === 401) {
+      throw new Error("Clé DocRaptor invalide pour le mode officiel. Vérifiez PDF_API_KEY.");
+    }
     throw new Error(`DocRaptor (${res.status}) : ${txt.slice(0, 300)}`);
   }
 
