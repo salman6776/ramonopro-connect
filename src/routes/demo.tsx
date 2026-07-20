@@ -405,24 +405,28 @@ function DemoPage() {
               <span>Test de vacuité réussi</span>
             </label>
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
                 <Label>Recommandations (visibles sur le certificat)</Label>
-                <Button type="button" variant="secondary" size="sm" disabled={aiBusy}
-                  onClick={async () => {
-                    setAiBusy(true);
-                    try {
-                      const { text } = await aiGen({ data: { notes, installationType, conduitState, cleaningDone, vacuityTest } });
-                      if (text) { setRecommendations(text); toast.success("Recommandations générées ✓"); }
-                    } catch { toast.error("Erreur IA"); }
-                    finally { setAiBusy(false); }
-                  }}>
-                  {aiBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
-                  IA
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="secondary" size="sm" disabled={aiBusy}
+                    onClick={async () => {
+                      setAiBusy(true);
+                      try {
+                        const { text } = await aiGen({ data: { notes, installationType, conduitState, cleaningDone, vacuityTest } });
+                        if (text) { setRecommendations(text); toast.success("Recommandations générées ✓"); }
+                      } catch { toast.error("Erreur IA"); }
+                      finally { setAiBusy(false); }
+                    }}>
+                    {aiBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                    IA
+                  </Button>
+                  <VoiceRecorder onTranscribed={(t) => setRecommendations((prev) => (prev ? prev + " " : "") + t)} />
+                </div>
               </div>
               <Textarea rows={4} value={recommendations} onChange={(e) => setRecommendations(e.target.value)}
                 placeholder="Texte qui apparaîtra sur le certificat remis au client." />
             </div>
+
             <div>
               <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
                 <Label>Notes internes (non visibles sur le certificat)</Label>
