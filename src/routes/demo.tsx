@@ -14,10 +14,11 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useServerFn } from "@tanstack/react-start";
 import { generatePreviewPdf } from "@/lib/docraptor.service";
-import { generateRecommendations } from "@/lib/ai.functions";
+import { generateRecommendations, improveNotes } from "@/lib/ai.functions";
 import { SignaturePad } from "@/components/signature-pad";
+import { VoiceRecorder } from "@/components/voice-recorder";
 import {
-  Camera, FileCheck, X, Loader2, Sparkles, ImagePlus, Images,
+  Camera, FileCheck, X, Loader2, Sparkles, ImagePlus, Images, Wand2,
   PenLine, ArrowRight, CheckCircle2, Banknote, FileText, Zap, Users, BellRing,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
@@ -43,6 +44,7 @@ function DemoPage() {
   const navigate = useNavigate();
   const genPreview = useServerFn(generatePreviewPdf);
   const aiGen = useServerFn(generateRecommendations);
+  const aiImprove = useServerFn(improveNotes);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -65,6 +67,7 @@ function DemoPage() {
   const [signature, setSignature] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [improveBusy, setImproveBusy] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [certNumber, setCertNumber] = useState<string | null>(null);
 
@@ -421,9 +424,27 @@ function DemoPage() {
                 placeholder="Texte qui apparaîtra sur le certificat remis au client." />
             </div>
             <div>
-              <Label>Notes internes (non visibles sur le certificat)</Label>
-              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
-                placeholder="Observations techniques pour votre propre suivi." />
+              <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                <Label>Notes internes (non visibles sur le certificat)</Label>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="secondary" size="sm" disabled={improveBusy || !notes.trim()}
+                    onClick={async () => {
+                      setImproveBusy(true);
+                      try {
+                        const { text } = await aiImprove({ data: { notes } });
+                        if (text) { setNotes(text); toast.success("Notes améliorées ✓"); }
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Erreur IA");
+                      } finally { setImproveBusy(false); }
+                    }}>
+                    {improveBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
+                    Améliorer
+                  </Button>
+                  <VoiceRecorder onTranscribed={(t) => setNotes((prev) => (prev ? prev + " " : "") + t)} />
+                </div>
+              </div>
+              <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}
+                placeholder="Tapez ou dictez vos observations." />
             </div>
           </CardContent>
         </Card>
