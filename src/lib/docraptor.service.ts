@@ -667,7 +667,6 @@ export const generateCertificatePdf = createServerFn({ method: "POST" })
       throw new SubscriptionRequiredError(
         `Vous avez déjà généré votre certificat d'essai gratuit. Passez Pro pour débloquer les certificats officiels sans filigrane, l'envoi email, les rappels automatiques et l'archivage cloud.`,
       );
-      );
     }
 
     const result = await runPipeline(data, true);
