@@ -172,8 +172,9 @@ function List() {
                   {i.cleaning_done ? "Nettoyé" : "Non nettoyé"}
                 </span>
                 <Button variant="outline" size="sm" onClick={() => openCertificate(i)}>
-                  <FileDown className="h-4 w-4 mr-1" />PDF
+                  <FileDown className="h-4 w-4 mr-1" />Exporter PDF
                 </Button>
+
                 <Button variant="outline" size="sm" asChild>
                   <Link to="/invoices"><Receipt className="h-4 w-4 mr-1" />Facture</Link>
                 </Button>
