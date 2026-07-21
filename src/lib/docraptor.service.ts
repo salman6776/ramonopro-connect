@@ -200,7 +200,16 @@ function buildHtml(params: {
           </td>
         </tr>
       </table>`
-    : "";
+    : `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+        <tr>
+          <td style="background:#ecfdf5;border:1.5px solid #10b981;border-radius:5px;
+            padding:7px 14px;text-align:center;font-size:9.5pt;font-weight:800;
+            color:#065f46;letter-spacing:.6px;">
+            &#10003;&nbsp;CERTIFICAT OFFICIEL — VALEUR CONTRACTUELLE
+          </td>
+        </tr>
+      </table>`;
+
 
   const conduitAlert = !conduitOk
     ? `<table style="width:100%;border-collapse:collapse;margin:8px 0;">
