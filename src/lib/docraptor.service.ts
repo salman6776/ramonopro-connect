@@ -665,7 +665,8 @@ export const generateCertificatePdf = createServerFn({ method: "POST" })
     const used = await countPreviewsUsed(data.access_token, data.user_id);
     if (used >= FREE_PREVIEW_LIMIT) {
       throw new SubscriptionRequiredError(
-        `Vous avez utilisé vos ${FREE_PREVIEW_LIMIT} certificats d'essai gratuits. Passez Pro pour continuer.`,
+        `Vous avez déjà généré votre certificat d'essai gratuit. Passez Pro pour débloquer les certificats officiels sans filigrane, l'envoi email, les rappels automatiques et l'archivage cloud.`,
+      );
       );
     }
 
