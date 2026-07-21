@@ -173,11 +173,8 @@ function NewIntervention() {
       URL.revokeObjectURL(dlUrl);
 
       if (result.mode === "preview") {
-        const left = result.previewsRemaining ?? 0;
         toast.success(
-          left > 0
-            ? `Essai gratuit — ${left} certificat(s) restant(s). Passez Pro pour retirer le filigrane.`
-            : `Dernier essai gratuit utilisé. Passez Pro pour continuer sans filigrane.`,
+          `Certificat d'essai généré ✓ Débloquez la version Pro pour l'envoi email, les rappels auto et l'archivage cloud.`,
         );
       } else {
         toast.success(`${result.certNumber} généré et téléchargé ✓`);
