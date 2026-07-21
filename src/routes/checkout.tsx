@@ -231,15 +231,50 @@ function CheckoutPage() {
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl shadow-gray-900/5">
+              {/* Launch offer banner */}
+              {(() => {
+                const OFFER_END = new Date("2026-08-31T23:59:59");
+                const now = new Date();
+                const offerActive = now < OFFER_END;
+                const daysLeft = Math.max(0, Math.ceil((OFFER_END.getTime() - now.getTime()) / 86400000));
+                if (!offerActive) return null;
+                return (
+                  <div className="border-b border-orange-100 bg-gradient-to-br from-orange-50 via-amber-50 to-orange-50 px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🎁</span>
+                      <span className="text-xs font-bold uppercase tracking-wider text-orange-600">
+                        Offre de lancement — Tarif fondateur
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                      <div className="rounded-lg bg-white/70 px-2.5 py-2 ring-1 ring-orange-100">
+                        <div className="font-bold text-gray-800">👥 18 places</div>
+                        <div className="text-gray-500">restantes</div>
+                      </div>
+                      <div className="rounded-lg bg-white/70 px-2.5 py-2 ring-1 ring-orange-100">
+                        <div className="font-bold text-gray-800">⏳ {daysLeft}j</div>
+                        <div className="text-gray-500">avant fin</div>
+                      </div>
+                      <div className="rounded-lg bg-white/70 px-2.5 py-2 ring-1 ring-orange-100">
+                        <div className="font-bold text-gray-800">📈 27 pros</div>
+                        <div className="text-gray-500">déjà inscrits</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Price banner */}
               <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-5 text-white">
                 <div className="flex items-end justify-between">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-orange-100">Plan Pro</p>
-                    <div className="mt-1 flex items-baseline gap-1">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-orange-100">Plan Pro — Tarif fondateur</p>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="text-lg font-medium text-orange-100 line-through decoration-2">59€</span>
                       <span className="text-4xl font-bold">24€</span>
                       <span className="text-sm font-medium text-orange-100">/mois</span>
                     </div>
+                    <p className="mt-1 text-[11px] text-orange-100">Tarif garanti à vie pour les fondateurs</p>
                   </div>
                   <div className="rounded-xl bg-white/20 px-3 py-1.5 text-xs font-semibold backdrop-blur">
                     Sans engagement
