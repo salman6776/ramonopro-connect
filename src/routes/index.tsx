@@ -659,12 +659,30 @@ function Pricing() {
                 <ShieldCheck className="h-7 w-7 text-[var(--color-brand)]" />
               </div>
 
-              <div className="mt-6 flex items-baseline gap-1">
+              <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-orange-700 ring-1 ring-orange-200">
+                🎁 Offre de lancement — Tarif fondateur
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-2xl font-medium text-muted-foreground line-through decoration-2">59€</span>
                 <span className="text-6xl font-extrabold tracking-tight text-primary">24€</span>
                 <span className="text-base text-muted-foreground">/mois</span>
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                Soit moins de 1€ par jour
+                Tarif garanti à vie · Réservé aux 18 premières places restantes
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+                <div className="rounded-lg bg-muted/50 px-2 py-1.5 text-center">
+                  <div className="font-bold text-foreground">👥 18</div>
+                  <div className="text-muted-foreground">places restantes</div>
+                </div>
+                <div className="rounded-lg bg-muted/50 px-2 py-1.5 text-center">
+                  <div className="font-bold text-foreground">⏳ 31 août</div>
+                  <div className="text-muted-foreground">fin de l'offre</div>
+                </div>
+                <div className="rounded-lg bg-muted/50 px-2 py-1.5 text-center">
+                  <div className="font-bold text-foreground">📈 27 pros</div>
+                  <div className="text-muted-foreground">déjà inscrits</div>
+                </div>
               </div>
 
               <CtaButton
