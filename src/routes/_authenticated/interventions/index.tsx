@@ -46,12 +46,25 @@ function List() {
   }, [data, search, typeFilter, period]);
 
   const openCertificate = async (i: typeof data[number]) => {
-    // Try cached PDF in storage first
+    const fileName = `certificat-${i.clients?.full_name?.replace(/\s+/g, "_") ?? "client"}-${new Date(i.intervention_date).toISOString().slice(0, 10)}.pdf`;
+    // Try cached PDF in storage first — force download instead of just viewing
     const { data: cert } = await supabase
       .from("certificates").select("pdf_url").eq("intervention_id", i.id).maybeSingle();
-    if (cert?.pdf_url) {
-      window.open(cert.pdf_url, "_blank");
-      return;
+    if (cert?.pdf_url && !cert.pdf_url.startsWith("local:")) {
+      try {
+        const res = await fetch(cert.pdf_url);
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = fileName;
+          document.body.appendChild(a); a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          toast.success("Certificat exporté ✓");
+          return;
+        }
+      } catch { /* fallback below */ }
     }
     // Fallback: regenerate locally
     const pdf = await generateCertificatePDF({
@@ -65,8 +78,10 @@ function List() {
       recommendations: i.notes ?? "",
       technician_name: user?.email ?? "",
     });
-    pdf.save(`certificat-${i.id.slice(0, 8)}.pdf`);
+    pdf.save(fileName);
+    toast.success("Certificat exporté ✓");
   };
+
 
   const resendToClient = async (i: typeof data[number]) => {
     if (!i.clients?.email) {
@@ -157,8 +172,9 @@ function List() {
                   {i.cleaning_done ? "Nettoyé" : "Non nettoyé"}
                 </span>
                 <Button variant="outline" size="sm" onClick={() => openCertificate(i)}>
-                  <FileDown className="h-4 w-4 mr-1" />PDF
+                  <FileDown className="h-4 w-4 mr-1" />Exporter PDF
                 </Button>
+
                 <Button variant="outline" size="sm" asChild>
                   <Link to="/invoices"><Receipt className="h-4 w-4 mr-1" />Facture</Link>
                 </Button>
