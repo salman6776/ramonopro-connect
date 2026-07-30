@@ -132,11 +132,16 @@ function CheckoutPage() {
 
       if (uploadError) throw uploadError;
 
+      const periodEnd = new Date();
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+
       const { error: dbError } = await supabase.from("subscriptions").upsert(
         {
           user_id: user.id,
           plan: "pro",
-          status: "pending_verification",
+          // Activation immédiate dès réception de la preuve de virement
+          status: "active",
+          current_period_end: periodEnd.toISOString(),
           proof_url: filePath,
           reference_email: email.trim(),
         },
