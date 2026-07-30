@@ -216,7 +216,6 @@ function CheckoutPage() {
                 Créer mon premier certificat officiel
               </Button>
             </div>
-            </div>
           </motion.div>
         ) : (
           /* ── CHECKOUT FORM ── */
