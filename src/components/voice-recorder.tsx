@@ -17,11 +17,19 @@ export function VoiceRecorder({ onTranscribed }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [supported, setSupported] = useState(true);
+  const [elapsed, setElapsed] = useState(0);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const lastBlobRef = useRef<{ blob: Blob; mimeType: string } | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcribe = useServerFn(transcribeAudio);
+
+  useEffect(() => {
+    if (!recording) return;
+    setElapsed(0);
+    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(id);
+  }, [recording]);
 
   useEffect(() => {
     setSupported(isMediaRecorderSupported());
@@ -104,13 +112,21 @@ export function VoiceRecorder({ onTranscribed }: Props) {
           <Loader2 className="h-4 w-4 mr-1 animate-spin" />Transcription IA…
         </Button>
       ) : recording ? (
-        <Button type="button" variant="destructive" size="sm" onClick={stop} className="animate-pulse">
-          <Square className="h-4 w-4 mr-1" />Arrêter
-        </Button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-destructive tabular-nums">
+            {String(Math.floor(elapsed / 60)).padStart(2, "0")}:{String(elapsed % 60).padStart(2, "0")}
+          </span>
+          <Button type="button" variant="destructive" size="sm" onClick={stop} className="animate-pulse">
+            <Square className="h-4 w-4 mr-1" />Terminer
+          </Button>
+        </div>
       ) : (
         <Button type="button" variant="secondary" size="sm" onClick={start} disabled={!supported}>
           <Mic className="h-4 w-4 mr-1" />Dicter
         </Button>
+      )}
+      {recording && !busy && (
+        <span className="text-[11px] text-muted-foreground">Parlez normalement, puis « Terminer »</span>
       )}
       {error && (
         <div className="flex items-center gap-2 text-xs text-destructive max-w-[260px] text-right">

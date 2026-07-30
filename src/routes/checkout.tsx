@@ -132,11 +132,16 @@ function CheckoutPage() {
 
       if (uploadError) throw uploadError;
 
+      const periodEnd = new Date();
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+
       const { error: dbError } = await supabase.from("subscriptions").upsert(
         {
           user_id: user.id,
           plan: "pro",
-          status: "pending_verification",
+          // Activation immédiate dès réception de la preuve de virement
+          status: "active",
+          current_period_end: periodEnd.toISOString(),
           proof_url: filePath,
           reference_email: email.trim(),
         },
@@ -186,27 +191,29 @@ function CheckoutPage() {
             className="mx-auto max-w-lg text-center"
           >
             <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-8 py-12 shadow-xl shadow-gray-900/5">
-              <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-orange-50 ring-8 ring-orange-50/50">
-                <Clock className="h-10 w-10 text-orange-500" />
+              <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-green-50 ring-8 ring-green-50/50">
+                <CheckCircle2 className="h-10 w-10 text-green-500" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900">Virement reçu !</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Accès Pro activé 🎉</h2>
               <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-gray-500">
-                Merci ! Votre paiement est en cours de vérification.
+                Votre preuve de virement a bien été enregistrée.
                 <br />
-                <span className="font-semibold text-gray-700">Votre accès Pro sera activé sous 24h.</span>
-              </p>
-              <div className="mx-auto mt-6 flex max-w-xs flex-col items-center gap-2 rounded-xl bg-orange-50 px-5 py-4 text-xs text-orange-700">
-                <span className="flex items-center gap-1.5 font-semibold">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Preuve de virement envoyée
+                <span className="font-semibold text-gray-700">
+                  Vos certificats sont désormais officiels, sans filigrane ni limite.
                 </span>
-                <span className="text-orange-500">Vous recevrez une confirmation par email.</span>
+              </p>
+              <div className="mx-auto mt-6 flex max-w-xs flex-col items-center gap-2 rounded-xl bg-green-50 px-5 py-4 text-xs text-green-700">
+                <span className="flex items-center gap-1.5 font-semibold">
+                  <Shield className="h-4 w-4" />
+                  Certificats illimités · Envoi email · Rappels auto
+                </span>
+                <span className="text-green-600">Archivage cloud sécurisé activé.</span>
               </div>
               <Button
-                onClick={() => navigate({ to: "/waiting" })}
+                onClick={() => navigate({ to: "/interventions/new" })}
                 className="mt-8 bg-orange-500 hover:bg-orange-600 text-white"
               >
-                Voir le statut de mon compte
+                Créer mon premier certificat officiel
               </Button>
             </div>
           </motion.div>
