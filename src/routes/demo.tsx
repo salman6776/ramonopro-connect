@@ -22,6 +22,7 @@ import {
   PenLine, ArrowRight, CheckCircle2, Banknote, FileText, Zap, Users, BellRing,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
+import { requireAccessToken } from "@/lib/session";
 
 export const Route = createFileRoute("/demo")({
   ssr: false,
@@ -412,7 +413,7 @@ function DemoPage() {
                     onClick={async () => {
                       setAiBusy(true);
                       try {
-                        const { text } = await aiGen({ data: { notes, installationType, conduitState, cleaningDone, vacuityTest } });
+                        const { text } = await aiGen({ data: { access_token: await requireAccessToken(), notes, installationType, conduitState, cleaningDone, vacuityTest } });
                         if (text) { setRecommendations(text); toast.success("Recommandations générées ✓"); }
                       } catch { toast.error("Erreur IA"); }
                       finally { setAiBusy(false); }
@@ -435,7 +436,7 @@ function DemoPage() {
                     onClick={async () => {
                       setImproveBusy(true);
                       try {
-                        const { text } = await aiImprove({ data: { notes } });
+                        const { text } = await aiImprove({ data: { access_token: await requireAccessToken(), notes } });
                         if (text) { setNotes(text); toast.success("Notes améliorées ✓"); }
                       } catch (err) {
                         toast.error(err instanceof Error ? err.message : "Erreur IA");
