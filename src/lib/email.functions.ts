@@ -6,6 +6,7 @@ import { createServerFn } from "@tanstack/react-start";
  */
 export const sendCertificateEmail = createServerFn({ method: "POST" })
   .inputValidator((d: {
+    access_token: string;
     to: string;
     clientName: string;
     technicianName: string;
@@ -16,11 +17,19 @@ export const sendCertificateEmail = createServerFn({ method: "POST" })
   }) => {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.to)) throw new Error("Email invalide");
     if (!d.pdfBase64) throw new Error("PDF manquant");
+    if (d.pdfBase64.length > 12_000_000) throw new Error("PDF trop volumineux");
+    if (d.clientName.length > 200 || d.technicianName.length > 200 || d.installationType.length > 200) {
+      throw new Error("Champs trop longs");
+    }
     return d;
   })
   .handler(async ({ data }) => {
+    const { verifyAccessToken } = await import("./auth.server");
+    await verifyAccessToken(data.access_token);
+
     const key = process.env.RESEND_API_KEY;
     if (!key) throw new Error("RESEND_API_KEY manquante");
+
 
     const dateFr = new Date(data.interventionDate).toLocaleDateString("fr-FR");
 
