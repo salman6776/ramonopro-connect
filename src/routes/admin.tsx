@@ -1,10 +1,15 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import { requireAccessToken } from "@/lib/session";
+import {
+  adminCheckAccess,
+  adminListPending,
+  adminSignProof,
+  adminActivateSubscription,
+  type PendingSub,
+} from "@/lib/admin.functions";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -17,6 +22,7 @@ import {
   RefreshCw,
   User,
   Mail,
+  Lock,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 
@@ -26,54 +32,48 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-const ADMIN_EMAIL = "salman@ramonopro.com";
-const ADMIN_SECRET = "RAMONO-ADMIN-2024";
-
-type PendingSub = {
-  id: string;
-  user_id: string;
-  plan: string;
-  status: string;
-  proof_url: string | null;
-  reference_email: string | null;
-  created_at: string;
-  profiles: { email: string | null; full_name: string | null; company_name: string | null } | null;
-};
-
 function AdminPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [secretInput, setSecretInput] = useState("");
-  const [accessGranted, setAccessGranted] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [hasAccess, setHasAccess] = useState(false);
   const [subs, setSubs] = useState<PendingSub[]>([]);
   const [fetching, setFetching] = useState(false);
   const [validating, setValidating] = useState<string | null>(null);
-
-  const isAdminEmail = user?.email === ADMIN_EMAIL;
-  const hasAccess = isAdminEmail || accessGranted;
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
   }, [loading, user, navigate]);
 
+  // L'autorisation est décidée UNIQUEMENT côté serveur.
   useEffect(() => {
-    if (hasAccess) fetchPending();
-  }, [hasAccess]);
+    if (loading || !user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const access_token = await requireAccessToken();
+        await adminCheckAccess({ data: { access_token } });
+        if (!cancelled) {
+          setHasAccess(true);
+          void fetchPending();
+        }
+      } catch {
+        if (!cancelled) setHasAccess(false);
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [loading, user]);
 
   const fetchPending = async () => {
     setFetching(true);
     try {
-      const { data, error } = await supabase
-        .from("subscriptions")
-        .select("*, profiles(email, full_name, company_name)")
-        .eq("status", "pending_verification")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setSubs((data ?? []) as PendingSub[]);
+      const access_token = await requireAccessToken();
+      const { subs: rows } = await adminListPending({ data: { access_token } });
+      setSubs(rows ?? []);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur de chargement";
-      toast.error(msg);
+      toast.error(err instanceof Error ? err.message : "Erreur de chargement");
     } finally {
       setFetching(false);
     }
@@ -81,11 +81,9 @@ function AdminPage() {
 
   const handleViewProof = async (proofPath: string) => {
     try {
-      const { data, error } = await supabase.storage
-        .from("proofs")
-        .createSignedUrl(proofPath, 3600);
-      if (error) throw error;
-      if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+      const access_token = await requireAccessToken();
+      const { url } = await adminSignProof({ data: { access_token, path: proofPath } });
+      window.open(url, "_blank", "noopener");
     } catch {
       toast.error("Impossible d'ouvrir la preuve.");
     }
@@ -94,36 +92,18 @@ function AdminPage() {
   const handleValidate = async (sub: PendingSub) => {
     setValidating(sub.id);
     try {
-      const periodEnd = new Date();
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-      const { error } = await supabase
-        .from("subscriptions")
-        .update({ status: "active", current_period_end: periodEnd.toISOString() })
-        .eq("id", sub.id);
-
-      if (error) throw error;
-
+      const access_token = await requireAccessToken();
+      await adminActivateSubscription({ data: { access_token, subscription_id: sub.id } });
       toast.success(`Abonnement de ${sub.profiles?.email ?? sub.user_id} activé !`);
       setSubs((prev) => prev.filter((s) => s.id !== sub.id));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur lors de la validation";
-      toast.error(msg);
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la validation");
     } finally {
       setValidating(null);
     }
   };
 
-  const handleSecretSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (secretInput.trim() === ADMIN_SECRET) {
-      setAccessGranted(true);
-    } else {
-      toast.error("Code incorrect.");
-    }
-  };
-
-  if (loading) {
+  if (loading || checking) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
@@ -145,36 +125,27 @@ function AdminPage() {
 
       <div className="mx-auto max-w-3xl">
         {!hasAccess ? (
-          /* ── ACCESS GATE ── */
+          /* ── ACCÈS REFUSÉ (décision serveur) ── */
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="mx-auto max-w-sm"
           >
             <div className="rounded-2xl border border-gray-200 bg-white px-8 py-10 shadow-xl shadow-gray-900/5 text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-orange-50">
-                <ShieldCheck className="h-8 w-8 text-orange-500" />
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                <Lock className="h-8 w-8 text-gray-400" />
               </div>
-              <h1 className="text-xl font-bold text-gray-900">Accès Admin</h1>
-              <p className="mt-2 text-sm text-gray-500">Entrez le code secret pour accéder au panneau d'administration.</p>
-              <form onSubmit={handleSecretSubmit} className="mt-6 space-y-3">
-                <div className="text-left">
-                  <Label htmlFor="secret">Code secret</Label>
-                  <Input
-                    id="secret"
-                    type="password"
-                    required
-                    value={secretInput}
-                    onChange={(e) => setSecretInput(e.target.value)}
-                    placeholder="••••••••••••"
-                    className="mt-1"
-                    autoComplete="off"
-                  />
-                </div>
-                <Button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-white">
-                  Accéder
-                </Button>
-              </form>
+              <h1 className="text-xl font-bold text-gray-900">Accès refusé</h1>
+              <p className="mt-2 text-sm text-gray-500">
+                Ce panneau est réservé à l'administrateur de RamonoPro.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-6 w-full"
+                onClick={() => navigate({ to: "/dashboard" })}
+              >
+                Retour à l'application
+              </Button>
             </div>
           </motion.div>
         ) : (
