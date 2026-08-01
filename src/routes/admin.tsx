@@ -14,7 +14,6 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
-  ShieldCheck,
   Loader2,
   CheckCircle2,
   Clock,
