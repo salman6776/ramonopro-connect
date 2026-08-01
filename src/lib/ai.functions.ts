@@ -148,13 +148,17 @@ Rédige uniquement les recommandations destinées au client.`;
  * Reformule des notes brutes en observations pro courtes.
  */
 export const improveNotes = createServerFn({ method: "POST" })
-  .inputValidator((d: { notes: string }) => {
+  .inputValidator((d: { access_token: string; notes: string }) => {
     if (!d.notes || !d.notes.trim()) throw new Error("Notes vides");
     return d;
   })
   .handler(async ({ data }) => {
+    const { verifyAccessToken } = await import("./auth.server");
+    await verifyAccessToken(data.access_token);
+
     const key = process.env.GROQ_API_KEY;
     if (!key) throw new Error("IA non configurée sur le serveur. Contactez le support.");
+
 
     const system = `Tu es l'assistant d'un ramoneur professionnel français.
 Tu reçois des notes brutes (souvent dictées, télégraphiques, fautes de frappe) et tu les reformules en observations techniques claires et professionnelles.
