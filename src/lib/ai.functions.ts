@@ -82,6 +82,7 @@ export const transcribeAudio = createServerFn({ method: "POST" })
  */
 export const generateRecommendations = createServerFn({ method: "POST" })
   .inputValidator((d: {
+    access_token: string;
     notes: string;
     installationType: string;
     conduitState: string;
@@ -89,8 +90,12 @@ export const generateRecommendations = createServerFn({ method: "POST" })
     vacuityTest: boolean;
   }) => d)
   .handler(async ({ data }) => {
+    const { verifyAccessToken } = await import("./auth.server");
+    await verifyAccessToken(data.access_token);
+
     const key = process.env.GROQ_API_KEY;
     if (!key) throw new Error("IA non configurée sur le serveur. Contactez le support.");
+
 
     const system = `Tu es un expert ramoneur français certifié, spécialiste de la réglementation (DTU 24.1, arrêté du 27 juin 2023, Code général des collectivités territoriales).
 Tu rédiges des recommandations claires, professionnelles, conformes à la réglementation française, destinées à figurer sur un certificat de ramonage remis au client.
