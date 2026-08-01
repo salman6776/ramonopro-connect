@@ -11,10 +11,13 @@ import logo from "@/assets/logo.png";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { redirect?: string; tab?: string } => ({
     redirect: (search.redirect as string) || undefined,
     tab: (search.tab as string) || undefined,
   }),
+
   head: () => ({ meta: [{ title: "Connexion — RamonoPro" }] }),
   component: AuthPage,
 });
