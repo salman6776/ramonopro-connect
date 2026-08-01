@@ -30,14 +30,18 @@ function wrapNetwork(err: unknown): Error {
  * Transcrit une note vocale en texte FR via Whisper Large v3 (Groq).
  */
 export const transcribeAudio = createServerFn({ method: "POST" })
-  .inputValidator((d: { audioBase64: string; mimeType: string }) => {
+  .inputValidator((d: { access_token: string; audioBase64: string; mimeType: string }) => {
     if (!d.audioBase64 || typeof d.audioBase64 !== "string") throw new Error("Audio manquant");
     if (d.audioBase64.length > 25_000_000) throw new Error("Fichier audio trop volumineux (max ~18 Mo)");
     return d;
   })
   .handler(async ({ data }) => {
+    const { verifyAccessToken } = await import("./auth.server");
+    await verifyAccessToken(data.access_token);
+
     const key = process.env.GROQ_API_KEY;
     if (!key) throw new Error("IA non configurée sur le serveur. Contactez le support.");
+
 
     const binary = Uint8Array.from(atob(data.audioBase64), (c) => c.charCodeAt(0));
     const blob = new Blob([binary], { type: data.mimeType || "audio/webm" });
