@@ -30,14 +30,18 @@ function wrapNetwork(err: unknown): Error {
  * Transcrit une note vocale en texte FR via Whisper Large v3 (Groq).
  */
 export const transcribeAudio = createServerFn({ method: "POST" })
-  .inputValidator((d: { audioBase64: string; mimeType: string }) => {
+  .inputValidator((d: { access_token: string; audioBase64: string; mimeType: string }) => {
     if (!d.audioBase64 || typeof d.audioBase64 !== "string") throw new Error("Audio manquant");
     if (d.audioBase64.length > 25_000_000) throw new Error("Fichier audio trop volumineux (max ~18 Mo)");
     return d;
   })
   .handler(async ({ data }) => {
+    const { verifyAccessToken } = await import("./auth.server");
+    await verifyAccessToken(data.access_token);
+
     const key = process.env.GROQ_API_KEY;
     if (!key) throw new Error("IA non configurée sur le serveur. Contactez le support.");
+
 
     const binary = Uint8Array.from(atob(data.audioBase64), (c) => c.charCodeAt(0));
     const blob = new Blob([binary], { type: data.mimeType || "audio/webm" });
@@ -78,6 +82,7 @@ export const transcribeAudio = createServerFn({ method: "POST" })
  */
 export const generateRecommendations = createServerFn({ method: "POST" })
   .inputValidator((d: {
+    access_token: string;
     notes: string;
     installationType: string;
     conduitState: string;
@@ -85,8 +90,12 @@ export const generateRecommendations = createServerFn({ method: "POST" })
     vacuityTest: boolean;
   }) => d)
   .handler(async ({ data }) => {
+    const { verifyAccessToken } = await import("./auth.server");
+    await verifyAccessToken(data.access_token);
+
     const key = process.env.GROQ_API_KEY;
     if (!key) throw new Error("IA non configurée sur le serveur. Contactez le support.");
+
 
     const system = `Tu es un expert ramoneur français certifié, spécialiste de la réglementation (DTU 24.1, arrêté du 27 juin 2023, Code général des collectivités territoriales).
 Tu rédiges des recommandations claires, professionnelles, conformes à la réglementation française, destinées à figurer sur un certificat de ramonage remis au client.
@@ -139,13 +148,17 @@ Rédige uniquement les recommandations destinées au client.`;
  * Reformule des notes brutes en observations pro courtes.
  */
 export const improveNotes = createServerFn({ method: "POST" })
-  .inputValidator((d: { notes: string }) => {
+  .inputValidator((d: { access_token: string; notes: string }) => {
     if (!d.notes || !d.notes.trim()) throw new Error("Notes vides");
     return d;
   })
   .handler(async ({ data }) => {
+    const { verifyAccessToken } = await import("./auth.server");
+    await verifyAccessToken(data.access_token);
+
     const key = process.env.GROQ_API_KEY;
     if (!key) throw new Error("IA non configurée sur le serveur. Contactez le support.");
+
 
     const system = `Tu es l'assistant d'un ramoneur professionnel français.
 Tu reçois des notes brutes (souvent dictées, télégraphiques, fautes de frappe) et tu les reformules en observations techniques claires et professionnelles.

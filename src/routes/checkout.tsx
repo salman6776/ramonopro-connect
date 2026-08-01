@@ -132,16 +132,13 @@ function CheckoutPage() {
 
       if (uploadError) throw uploadError;
 
-      const periodEnd = new Date();
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
-
       const { error: dbError } = await supabase.from("subscriptions").upsert(
         {
           user_id: user.id,
           plan: "pro",
-          // Activation immédiate dès réception de la preuve de virement
-          status: "active",
-          current_period_end: periodEnd.toISOString(),
+          // L'activation n'est JAMAIS décidée côté client : un admin valide
+          // la preuve de virement avant le passage en "active" (voir /admin).
+          status: "pending_verification",
           proof_url: filePath,
           reference_email: email.trim(),
         },
@@ -194,12 +191,12 @@ function CheckoutPage() {
               <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-green-50 ring-8 ring-green-50/50">
                 <CheckCircle2 className="h-10 w-10 text-green-500" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900">Accès Pro activé 🎉</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Paiement reçu — vérification en cours</h2>
               <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-gray-500">
                 Votre preuve de virement a bien été enregistrée.
                 <br />
                 <span className="font-semibold text-gray-700">
-                  Vos certificats sont désormais officiels, sans filigrane ni limite.
+                  Votre accès Pro est activé dès validation du virement (généralement sous quelques heures).
                 </span>
               </p>
               <div className="mx-auto mt-6 flex max-w-xs flex-col items-center gap-2 rounded-xl bg-green-50 px-5 py-4 text-xs text-green-700">
@@ -207,14 +204,15 @@ function CheckoutPage() {
                   <Shield className="h-4 w-4" />
                   Certificats illimités · Envoi email · Rappels auto
                 </span>
-                <span className="text-green-600">Archivage cloud sécurisé activé.</span>
+                <span className="text-green-600">Vous recevrez un email dès l'activation.</span>
               </div>
               <Button
-                onClick={() => navigate({ to: "/interventions/new" })}
+                onClick={() => navigate({ to: "/demo" })}
                 className="mt-8 bg-orange-500 hover:bg-orange-600 text-white"
               >
-                Créer mon premier certificat officiel
+                Retour à l'application
               </Button>
+
             </div>
           </motion.div>
         ) : (

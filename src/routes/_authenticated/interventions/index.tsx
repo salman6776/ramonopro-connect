@@ -13,6 +13,7 @@ import { generateCertificatePDF } from "@/lib/pdf";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { sendCertificateEmail } from "@/lib/email.functions";
+import { requireAccessToken } from "@/lib/session";
 
 export const Route = createFileRoute("/_authenticated/interventions/")({
   component: List,
@@ -102,7 +103,9 @@ function List() {
         technician_name: user?.email ?? "",
       });
       const base64 = pdf.output("datauristring").split(",")[1];
+      const access_token = await requireAccessToken();
       await sendEmail({ data: {
+        access_token,
         to: i.clients.email,
         clientName: i.clients.full_name,
         technicianName: user?.email ?? "Votre ramoneur",

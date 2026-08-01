@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Mic, Square, Loader2, Sparkles, AlertCircle, RotateCw } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { transcribeAudio } from "@/lib/ai.functions";
+import { requireAccessToken } from "@/lib/session";
 
 type Props = { onTranscribed: (text: string) => void };
 
@@ -41,7 +42,8 @@ export function VoiceRecorder({ onTranscribed }: Props) {
     setError(null);
     try {
       const base64 = await blobToBase64(blob);
-      const { text } = await transcribe({ data: { audioBase64: base64, mimeType } });
+      const access_token = await requireAccessToken();
+      const { text } = await transcribe({ data: { access_token, audioBase64: base64, mimeType } });
       if (text) onTranscribed(text);
       else setError("Aucun texte détecté.");
     } catch (err) {

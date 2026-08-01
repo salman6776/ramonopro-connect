@@ -18,6 +18,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { generateRecommendations, improveNotes } from "@/lib/ai.functions";
 import { generateOfficialPdf } from "@/lib/docraptor.service";
 import { SignaturePad } from "@/components/signature-pad";
+import { requireAccessToken } from "@/lib/session";
 
 export const Route = createFileRoute("/_authenticated/interventions/new")({
   component: NewIntervention,
@@ -61,7 +62,7 @@ function NewIntervention() {
     if (!notes.trim()) { toast.error("Ajoutez d'abord des notes"); return; }
     setImproveBusy(true); setImproveError(null);
     try {
-      const { text } = await aiImprove({ data: { notes } });
+      const { text } = await aiImprove({ data: { access_token: await requireAccessToken(), notes } });
       if (text) { setNotes(text); toast.success("Notes améliorées ✓"); }
     } catch (err) {
       setImproveError(err instanceof Error ? err.message : "Erreur IA");
@@ -71,7 +72,7 @@ function NewIntervention() {
   const runRecommendations = async () => {
     setAiBusy(true); setAiError(null);
     try {
-      const { text } = await aiGen({ data: { notes, installationType, conduitState, cleaningDone, vacuityTest } });
+      const { text } = await aiGen({ data: { access_token: await requireAccessToken(), notes, installationType, conduitState, cleaningDone, vacuityTest } });
       if (text) { setRecommendations(text); toast.success("Recommandations générées ✓"); }
     } catch (err) {
       setAiError(err instanceof Error ? err.message : "Erreur IA");
@@ -119,8 +120,9 @@ function NewIntervention() {
         const path = `${uid}/${Date.now()}-${item.id}.${item.file.name.split(".").pop() || "jpg"}`;
         const { error: upErr } = await supabase.storage.from("photos").upload(path, item.file, { contentType: item.file.type });
         if (!upErr) {
-          const { data: pub } = supabase.storage.from("photos").getPublicUrl(path);
-          photoUrls.push(pub.publicUrl);
+          // Bucket privé : lien signé à durée limitée (pas d'URL publique devinable).
+          const { data: signed } = await supabase.storage.from("photos").createSignedUrl(path, 3600);
+          if (signed?.signedUrl) photoUrls.push(signed.signedUrl);
         } else {
           console.warn("Photo upload error:", upErr.message);
         }
