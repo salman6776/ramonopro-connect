@@ -83,7 +83,18 @@ async function uploadPdfToStorage(token: string, pdfBytes: Uint8Array, path: str
     console.warn("PDF storage failed:", upRes.status, await upRes.text());
     return "";
   }
-  return `${SB_URL}/storage/v1/object/public/certificates/${path}`;
+  // Bucket privé : on renvoie une URL signée (7 j) au lieu d'une URL publique.
+  const signRes = await fetch(`${SB_URL}/storage/v1/object/sign/certificates/${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, apikey: SB_ANON, "Content-Type": "application/json" },
+    body: JSON.stringify({ expiresIn: 60 * 60 * 24 * 7 }),
+  });
+  if (!signRes.ok) {
+    console.warn("PDF sign failed:", signRes.status);
+    return "";
+  }
+  const signed = (await signRes.json()) as { signedURL?: string };
+  return signed.signedURL ? `${SB_URL}/storage/v1${signed.signedURL}` : "";
 }
 
 /* ── Image → base64 (safe for large files) ─────────────── */

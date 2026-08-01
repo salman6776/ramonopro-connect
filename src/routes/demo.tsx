@@ -115,8 +115,9 @@ function DemoPage() {
         const path = `${user.id}/${Date.now()}-${item.id}.${item.file.name.split(".").pop() || "jpg"}`;
         const { error: upErr } = await supabase.storage.from("photos").upload(path, item.file, { contentType: item.file.type });
         if (!upErr) {
-          const { data: pub } = supabase.storage.from("photos").getPublicUrl(path);
-          photoUrls.push(pub.publicUrl);
+          // Bucket privé : lien signé à durée limitée (pas d'URL publique devinable).
+          const { data: signed } = await supabase.storage.from("photos").createSignedUrl(path, 3600);
+          if (signed?.signedUrl) photoUrls.push(signed.signedUrl);
         }
       }
 
